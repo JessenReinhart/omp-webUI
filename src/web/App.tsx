@@ -4,7 +4,6 @@ import {
   ChevronRight,
   Circle,
   Copy,
-  FileText,
   Folder,
   MoreHorizontal,
   Paperclip,
