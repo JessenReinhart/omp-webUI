@@ -3,10 +3,8 @@ import {
   ChevronDown,
   ChevronRight,
   Circle,
-  Code2,
   Copy,
   FileText,
-  FlaskConical,
   Folder,
   MoreHorizontal,
   Paperclip,
@@ -17,7 +15,7 @@ import {
   Terminal,
   Users,
 } from "lucide-react";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Slot } from "./plugin-system";
 
 interface SessionHost {
@@ -41,17 +39,6 @@ interface SessionResponse {
   access?: "view" | "control";
   host?: SessionHost;
 }
-
-const sampleSessions = [
-  { title: "Widget system cleanup", subtitle: "Refactor widget architecture", time: "9:12 AM" },
-  { title: "Collab reconnect", subtitle: "Handle websocket timeouts", time: "8:41 AM" },
-];
-
-const olderSessions = [
-  { title: "Docs: plugin runtime", subtitle: "Update subagent docs", time: "Mar 2" },
-  { title: "Test framework setup", subtitle: "Add e2e test harness", time: "Mar 2" },
-  { title: "Improve error handling", subtitle: "Better error messages", time: "Mar 1" },
-];
 
 function token() {
   return new URLSearchParams(window.location.search).get("token") ?? "";
@@ -102,46 +89,6 @@ function SessionRow({
       </div>
       <MoreHorizontal size={15} className="session-more" />
     </button>
-  );
-}
-
-function AgentCard({
-  icon,
-  name,
-  status,
-  description,
-  detail,
-  active,
-}: {
-  icon: ReactNode;
-  name: string;
-  status: string;
-  description: string;
-  detail?: string;
-  active?: boolean;
-}) {
-  return (
-    <article className="agent-card">
-      <div className="agent-icon">{icon}</div>
-      <div className="agent-main">
-        <div className="agent-heading">
-          <strong>{name}</strong>
-          <span className={`agent-status${active ? " live" : ""}`}>
-            <i />
-            {status}
-          </span>
-        </div>
-        <p>{description}</p>
-        {detail ? <code>{detail}</code> : null}
-        <div className="agent-actions">
-          <button>View</button>
-          <button>Message</button>
-          <button className="icon-button" aria-label={`More actions for ${name}`}>
-            <MoreHorizontal size={14} />
-          </button>
-        </div>
-      </div>
-    </article>
   );
 }
 
@@ -239,14 +186,9 @@ export function App() {
             subtitle={currentSubtitle}
             time={loading ? "..." : connected ? "Now" : "Offline"}
           />
-          {sampleSessions.map((item) => (
-            <SessionRow key={item.title} {...item} />
-          ))}
-
-          <span className="session-group-label">Earlier</span>
-          {olderSessions.map((item) => (
-            <SessionRow key={item.title} {...item} />
-          ))}
+          <div className="list-placeholder">
+            <span>More sessions will appear here once session discovery is wired.</span>
+          </div>
         </div>
 
         <div className="session-sidebar-footer">
@@ -384,10 +326,6 @@ export function App() {
             <h2>Subagents</h2>
             <p>Agents working with you on this session.</p>
           </div>
-          <button className="add-agent-button">
-            <Plus size={14} />
-            Add
-          </button>
         </div>
 
         <div className="session-context-card">
@@ -401,56 +339,14 @@ export function App() {
           </button>
         </div>
 
-        <div className="agent-section">
-          <div className="agent-section-title">
-            <span>Active</span>
-            <small>2</small>
-          </div>
-          <AgentCard
-            active
-            icon={<Code2 size={18} />}
-            name="Code"
-            status="Working"
-            description="Implementing component"
-            detail="Edit · WorkspaceWidget.tsx"
-          />
-          <AgentCard
-            active
-            icon={<Activity size={18} />}
-            name="Architect"
-            status="Thinking"
-            description="Reviewing component structure"
-          />
-        </div>
-
-        <div className="agent-section muted-agents">
-          <div className="agent-section-title">
-            <span>Available</span>
-            <small>3</small>
-          </div>
-          <AgentCard
-            icon={<FileText size={18} />}
-            name="Docs"
-            status="Idle"
-            description="Ready when needed"
-          />
-          <AgentCard
-            icon={<FlaskConical size={18} />}
-            name="Test"
-            status="Idle"
-            description="Write and run tests"
-          />
-          <AgentCard
-            icon={<Terminal size={18} />}
-            name="Deploy"
-            status="Idle"
-            description="Build and deployment"
-          />
-        </div>
-
-        <div className="subagent-note">
-          Real subagents will populate this panel from OMP’s <code>agents</code> and <code>bus</code>{" "}
-          frames once the pi-wire transport lands.
+        <div className="subagent-empty">
+          <Users size={19} />
+          <strong>No subagent stream yet</strong>
+          <p>
+            Running OMP subagents will appear here automatically once the pi-wire client is
+            connected.
+          </p>
+          <span>View transcript · Message · Kill · Revive</span>
         </div>
 
         <Slot name="agent.panel" />
