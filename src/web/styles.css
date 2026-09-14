@@ -882,6 +882,140 @@ textarea {
   font-size: 9px;
 }
 
+
+.list-placeholder {
+  margin: 8px 8px 0;
+  padding: 12px;
+  border-top: 1px solid var(--line-soft);
+  color: #606679;
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.transport-state {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  gap: 16px;
+  width: min(720px, 100%);
+  margin: auto;
+  padding: 28px 8px 42px;
+}
+
+.transport-state > .omp-mark {
+  margin-top: 2px;
+}
+
+.transport-copy {
+  min-width: 0;
+}
+
+.transport-kicker {
+  display: block;
+  margin-bottom: 8px;
+  color: #767c90;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.13em;
+}
+
+.transport-copy h1 {
+  margin: 0 0 8px;
+  color: #f2eff6;
+  font-size: 21px;
+  font-weight: 620;
+  letter-spacing: -0.015em;
+}
+
+.transport-copy > p {
+  max-width: 620px;
+  margin: 0;
+  color: #858b9d;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.transport-copy > code {
+  display: inline-block;
+  margin-top: 15px;
+  padding: 6px 9px;
+  border-radius: 6px;
+  background: #151824;
+  color: #d7d4dc;
+  font-size: 11px;
+}
+
+.transport-details {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(130px, 0.8fr) minmax(80px, 0.45fr);
+  gap: 1px;
+  margin-top: 20px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--line);
+}
+
+.transport-details > div {
+  min-width: 0;
+  padding: 12px 13px;
+  background: #10131e;
+}
+
+.transport-details span,
+.transport-details strong {
+  display: block;
+}
+
+.transport-details span {
+  margin-bottom: 5px;
+  color: #686e82;
+  font-size: 9px;
+}
+
+.transport-details strong {
+  overflow: hidden;
+  color: #d9d6e0;
+  font-size: 11px;
+  font-weight: 550;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.subagent-empty {
+  display: grid;
+  justify-items: start;
+  margin-top: 18px;
+  padding: 18px 14px;
+  border-top: 1px solid var(--line-soft);
+  border-bottom: 1px solid var(--line-soft);
+  color: #6e7488;
+}
+
+.subagent-empty > svg {
+  margin-bottom: 12px;
+  color: #858b9e;
+}
+
+.subagent-empty strong {
+  margin-bottom: 5px;
+  color: #c8c5cf;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.subagent-empty p {
+  margin: 0;
+  color: #72788c;
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.subagent-empty span {
+  margin-top: 10px;
+  color: #5e6477;
+  font-size: 9px;
+}
+
 @media (max-width: 1280px) {
   .app-shell {
     grid-template-columns: 58px 290px minmax(440px, 1fr) 310px;
