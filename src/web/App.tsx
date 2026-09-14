@@ -17,7 +17,7 @@ import {
   Terminal,
   Users,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Slot } from "./plugin-system";
 
 interface SessionHost {
@@ -113,7 +113,7 @@ function AgentCard({
   detail,
   active,
 }: {
-  icon: React.ReactNode;
+  icon: ReactNode;
   name: string;
   status: string;
   description: string;
