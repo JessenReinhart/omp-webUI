@@ -14,10 +14,50 @@ Keep OMP as the agent runtime, while providing a richer browser workspace for:
 
 The project intentionally builds on OMP's native extension system and collab protocol instead of scraping terminal output.
 
-## Status
+## Current bootstrap
 
-Early bootstrap. The first milestone is:
+The first vertical slice is:
 
-`OMP session -> /webui -> local server -> browser -> discover the exact running OMP collab host`
+```text
+running OMP
+  -> /collab (or collab.autoStart=control)
+  -> /webui
+  -> loopback web server
+  -> browser shell
+  -> discover this exact OMP process through the collab host registry
+```
 
-See the bootstrap PR for the initial implementation.
+The browser transport is intentionally the next slice. The current UI verifies that the plugin can identify the live host and obtain its collab endpoint without terminal scraping.
+
+## Local development
+
+Prerequisites: current OMP and Bun 1.3.14+.
+
+```bash
+git clone https://github.com/JessenReinhart/omp-webUI.git
+cd omp-webUI
+bun install
+bun run build
+omp plugin link .
+```
+
+Restart OMP, then:
+
+```text
+/collab
+/webui
+```
+
+OMP prints the local authenticated URL for the browser workspace. Use `/webui stop` to stop the local server.
+
+For frontend-only work:
+
+```bash
+bun run dev
+```
+
+## Architecture
+
+See [docs/architecture.md](docs/architecture.md).
+
+The intended direction is Cordis-like extensibility without making every core subsystem a plugin immediately. The web client begins with disposable UI slot registrations, then grows a typed host/client plugin API after the native OMP session stream is working.
