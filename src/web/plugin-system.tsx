@@ -1,4 +1,4 @@
-import type { ComponentType, ReactNode } from "react";
+import { useSyncExternalStore, type ComponentType, type ReactNode } from "react";
 
 export type UiSlot =
   | "sidebar.top"
@@ -21,13 +21,14 @@ export interface UiContribution {
 }
 
 type Listener = () => void;
+const EMPTY_CONTRIBUTIONS: UiContribution[] = [];
 
 class PluginRegistry {
   #ui = new Map<UiSlot, UiContribution[]>();
   #listeners = new Set<Listener>();
 
   registerUi(contribution: UiContribution) {
-    const list = this.#ui.get(contribution.slot) ?? [];
+    const list = this.#ui.get(contribution.slot) ?? EMPTY_CONTRIBUTIONS;
     if (list.some((item) => item.id === contribution.id)) {
       throw new Error(`Duplicate UI contribution: ${contribution.id}`);
     }
@@ -39,7 +40,7 @@ class PluginRegistry {
     this.#emit();
 
     return () => {
-      const next = (this.#ui.get(contribution.slot) ?? []).filter(
+      const next = (this.#ui.get(contribution.slot) ?? EMPTY_CONTRIBUTIONS).filter(
         (item) => item.id !== contribution.id,
       );
       this.#ui.set(contribution.slot, next);
@@ -48,7 +49,7 @@ class PluginRegistry {
   }
 
   getUi(slot: UiSlot) {
-    return this.#ui.get(slot) ?? [];
+    return this.#ui.get(slot) ?? EMPTY_CONTRIBUTIONS;
   }
 
   subscribe(listener: Listener) {
@@ -64,7 +65,12 @@ class PluginRegistry {
 export const plugins = new PluginRegistry();
 
 export function Slot({ name, fallback }: { name: UiSlot; fallback?: ReactNode }) {
-  const contributions = plugins.getUi(name);
+  const contributions = useSyncExternalStore(
+    (listener) => plugins.subscribe(listener),
+    () => plugins.getUi(name),
+    () => plugins.getUi(name),
+  );
+
   if (contributions.length === 0) return fallback ?? null;
 
   return (
