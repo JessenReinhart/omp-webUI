@@ -1,0 +1,38 @@
+{
+  "name": "omp-webui",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "Extensible web workspace for Oh My Pi, delivered as an OMP plugin.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/JessenReinhart/omp-webUI.git"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "check": "tsc --noEmit"
+  },
+  "omp": {
+    "extensions": ["./src/extension/index.ts"]
+  },
+  "dependencies": {
+    "@oh-my-pi/pi-wire": "^18.1.21",
+    "lucide-react": "^1.24.0",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7"
+  },
+  "devDependencies": {
+    "@oh-my-pi/pi-coding-agent": "^18.1.21",
+    "@types/bun": "^1.3.14",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.1.1",
+    "typescript": "^7.0.2",
+    "vite": "^8.1.4"
+  },
+  "engines": {
+    "bun": ">=1.3.14"
+  }
+}
