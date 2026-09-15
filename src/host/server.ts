@@ -65,13 +65,10 @@ async function handler(request: Request, token: string): Promise<Response> {
         collabUrl: connection.url,
       });
     } catch (error) {
-      return json(
-        {
-          connected: false,
-          error: error instanceof Error ? error.message : String(error),
-        },
-        500,
-      );
+      return json({
+        connected: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 

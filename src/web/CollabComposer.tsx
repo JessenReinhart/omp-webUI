@@ -35,7 +35,9 @@ export function CollabComposer({
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
-    if (event.key !== "Enter" || (!event.ctrlKey && !event.metaKey)) return;
+    // Enter sends, Shift+Enter inserts a newline
+    if (event.key !== "Enter") return;
+    if (event.shiftKey) return;
 
     event.preventDefault();
     event.currentTarget.form?.requestSubmit();
@@ -82,7 +84,7 @@ export function CollabComposer({
       />
 
       <div id={feedbackId} className="composer-hint" role="status" aria-live="polite">
-        {feedback || (disabled ? "Messaging unavailable" : "Ctrl/⌘ + Enter to send")}
+        {feedback || (disabled ? "Messaging unavailable" : "Enter to send, Shift+Enter for newline")}
       </div>
 
       {isStreaming ? (
