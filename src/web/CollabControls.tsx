@@ -18,10 +18,11 @@ export function CollabControls({
 }: CollabControlsProps) {
   const isLive = status === "live";
   const canRetry = status === "error" || status === "closed" || status === "reconnecting";
+  const busy = status === "connecting" || status === "reconnecting";
   const statusLabel = STATUS_LABELS[status];
 
   return (
-    <div className="agent-actions" role="group" aria-label="Collaboration connection controls">
+    <div className="connection-controls" role="group" aria-label="Collaboration connection controls">
       <span className={`agent-status${isLive ? " live" : ""}`} role="status" aria-live="polite">
         <i aria-hidden="true" />
         {statusLabel}
@@ -36,13 +37,22 @@ export function CollabControls({
       )}
 
       {canRetry && (
-        <button type="button" onClick={onReconnect} aria-label="Retry collaboration connection">
+        <button
+          type="button"
+          onClick={onReconnect}
+          aria-label="Retry collaboration connection"
+          disabled={busy}
+        >
           Retry
         </button>
       )}
 
       {isLive && (
-        <button type="button" onClick={onDisconnect} aria-label="Disconnect collaboration session">
+        <button
+          type="button"
+          onClick={onDisconnect}
+          aria-label="Disconnect collaboration session"
+        >
           Disconnect
         </button>
       )}
