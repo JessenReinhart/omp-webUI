@@ -6,17 +6,18 @@ import {
   Copy,
   Folder,
   MoreHorizontal,
-  Paperclip,
   Plus,
   Search,
-  Send,
   Settings2,
   Terminal,
   Users,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { CollabComposer } from "./CollabComposer";
+import { CollabControls } from "./CollabControls";
+import { CollabTranscript } from "./CollabTranscript";
 import { Slot } from "./plugin-system";
-
+import { useCollabSession } from "./useCollabSession";
 interface SessionHost {
   instanceId?: string;
   pid?: number;
@@ -37,6 +38,7 @@ interface SessionResponse {
   error?: string;
   access?: "view" | "control";
   host?: SessionHost;
+  collabUrl?: string;
 }
 
 function token() {
@@ -93,6 +95,7 @@ function SessionRow({
 
 export function App() {
   const [session, setSession] = useState<SessionResponse | null>(null);
+  const [collabUrl, setCollabUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const authToken = useMemo(token, []);
 
@@ -102,14 +105,22 @@ export function App() {
     async function refresh() {
       try {
         const response = await fetch(`/api/session?token=${encodeURIComponent(authToken)}`);
+        if (!response.ok) {
+          throw new Error(`Session request failed (${response.status})`);
+        }
         const data = (await response.json()) as SessionResponse;
-        if (!cancelled) setSession(data);
+        if (!cancelled) {
+          const { collabUrl: secret, ...rest } = data;
+          setSession(rest);
+          setCollabUrl(data.connected && secret ? secret : null);
+        }
       } catch (error) {
         if (!cancelled) {
           setSession({
             connected: false,
             error: error instanceof Error ? error.message : String(error),
           });
+          setCollabUrl(null);
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -124,7 +135,10 @@ export function App() {
     };
   }, [authToken]);
 
+
+
   const connected = Boolean(session?.connected);
+  const collab = useCollabSession(collabUrl);
   const host = session?.host;
   const currentTitle = host?.sessionName || "Current OMP session";
   const currentWorkspace = workspaceName(host?.cwd);
@@ -223,21 +237,43 @@ export function App() {
         <section className="conversation">
           <Slot name="chat.before" />
 
-          <div className="transport-state">\n            <OmpMark />\n            <div className="transport-copy">\n              <span className="transport-kicker">\n                {loading ? "DISCOVERING SESSION" : connected ? "SESSION CONNECTED" : "WAITING FOR OMP"}\n              </span>\n              <h1>\n                {loading\n                  ? "Finding your OMP session..."\n                  : connected\n                    ? currentTitle\n                    : "No active OMP collab session"}\n              </h1>\n              <p>\n                {connected\n                  ? "The browser is attached to this OMP process. Live transcript, tool events, and prompts will populate this workspace through pi-wire."\n                  : currentSubtitle}\n              </p>\n              {connected ? (\n                <div className="transport-details">\n                  <div>\n                    <span>Workspace</span>\n                    <strong>{host?.cwd || currentWorkspace}</strong>\n                  </div>\n                  <div>\n                    <span>Model</span>\n                    <strong>{currentModel}</strong>\n                  </div>\n                  <div>\n                    <span>Access</span>\n                    <strong>{session?.access ?? "control"}</strong>\n                  </div>\n                </div>\n              ) : (\n                <code>/collab</code>\n              )}\n            </div>\n          </div>\n          <Slot name="chat.after" />
+          {connected ? (
+            <>
+              <CollabControls
+                status={collab.status}
+                readOnly={collab.readOnly}
+                error={collab.error}
+                onReconnect={collab.reconnect}
+                onDisconnect={collab.disconnect}
+              />
+              <CollabTranscript
+                entries={collab.entries}
+                events={collab.events}
+                status={collab.status}
+              />
+            </>
+          ) : (
+            <div className="transport-state">
+              <OmpMark />
+              <div className="transport-copy">
+                <span className="transport-kicker">
+                  {loading ? "DISCOVERING SESSION" : "WAITING FOR OMP"}
+                </span>
+                <h1>{loading ? "Finding your OMP session..." : "No active OMP collab session"}</h1>
+                <p>{currentSubtitle}</p>
+                {!loading && <code>/collab</code>}
+              </div>
+            </div>
+          )}
+          <Slot name="chat.after" />
 
-          <div className="composer">
-            <button className="composer-icon" aria-label="Attach file">
-              <Paperclip size={18} />
-            </button>
-            <textarea
-              disabled
-              placeholder={connected ? "Message OMP..." : "Connect an OMP session to start chatting"}
-            />
-            <div className="composer-hint">⌘ ↵ to send</div>
-            <button className="send-button" disabled aria-label="Send message">
-              <Send size={17} />
-            </button>
-          </div>
+          <CollabComposer
+            disabled={!connected || !collab.ready || collab.readOnly || collab.status !== "live"}
+            placeholder={connected ? "Message OMP..." : "Connect an OMP session to start chatting"}
+            isStreaming={collab.state?.isStreaming === true}
+            onSend={collab.sendPrompt}
+            onAbort={collab.sendAbort}
+          />
         </section>
       </section>
 
