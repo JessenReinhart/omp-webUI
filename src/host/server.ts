@@ -1,5 +1,7 @@
 import { existsSync } from "node:fs";
-import { extname, join, normalize, relative } from "node:path";
+import { basename, extname, join, normalize, relative, resolve } from "node:path";
+import { FileSessionStorage, listSessions, loadSessionFile } from "@oh-my-pi/pi-coding-agent";
+import { computeDefaultSessionDir } from "@oh-my-pi/pi-coding-agent/session/session-paths";
 import { getEventRing, getWebUiRuntime, subscribeStream } from "../extension/index";
 
 const HOST = "127.0.0.1";
@@ -72,6 +74,55 @@ async function handler(request: Request, token: string): Promise<Response> {
         connected: false,
         error: error instanceof Error ? error.message : String(error),
       });
+    }
+  }
+
+  if (url.pathname === "/api/sessions") {
+    if (!isAuthorized(url, token)) return json({ error: "unauthorized" }, 401);
+
+    try {
+      const cwd = getWebUiRuntime()?.ctx?.cwd ?? process.cwd();
+      const storage = new FileSessionStorage();
+      const sessionDir = computeDefaultSessionDir(cwd, storage);
+      const sessions = await listSessions(sessionDir, storage);
+      const mapped = sessions.map((s) => ({
+        id: s.id,
+        title: s.title || s.firstMessage || s.id,
+        cwd: s.cwd,
+        created: s.created,
+        modified: s.modified,
+        messageCount: s.messageCount,
+        fileId: basename(s.path),
+        path: s.path,
+      }));
+      return json({ ok: true, sessions: mapped });
+    } catch (error) {
+      return json({ error: error instanceof Error ? error.message : String(error) }, 500);
+    }
+  }
+
+  if (url.pathname.startsWith("/api/sessions/")) {
+    if (!isAuthorized(url, token)) return json({ error: "unauthorized" }, 401);
+
+    try {
+      const fileId = url.searchParams.get("fileId") || url.pathname.replace("/api/sessions/", "");
+      if (!fileId || !fileId.endsWith(".jsonl") || fileId.includes("/") || fileId.includes("\\") || fileId.includes("..")) {
+        return json({ error: "Invalid fileId parameter" }, 400);
+      }
+
+      const cwd = getWebUiRuntime()?.ctx?.cwd ?? process.cwd();
+      const storage = new FileSessionStorage();
+      const sessionDir = computeDefaultSessionDir(cwd, storage);
+      const filePath = resolve(sessionDir, fileId);
+
+      if (!filePath.startsWith(sessionDir)) {
+        return json({ error: "Access denied" }, 403);
+      }
+
+      const result = await loadSessionFile(filePath, storage);
+      return json({ ok: true, entries: result.entries });
+    } catch (error) {
+      return json({ error: error instanceof Error ? error.message : String(error) }, 500);
     }
   }
 

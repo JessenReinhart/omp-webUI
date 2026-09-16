@@ -75,3 +75,10 @@ The host/client protocol and permission model will be designed after the native 
 - A random per-server token protects all `/api/*` endpoints.
 - The token is passed only in the authenticated URL and is never logged or displayed in the UI.
 - Third-party plugins will require explicit capability declarations before privileged host APIs are exposed.
+## Session History & Transcript Viewer
+
+- `GET /api/sessions?token={TOKEN}` lists past sessions from `~/.omp/agent/sessions/` using `@oh-my-pi/pi-coding-agent`.
+- `GET /api/sessions/:fileId.jsonl?token={TOKEN}` loads past session entries for read-only transcript viewing.
+- Paths are contained via `resolve(sessionDir, fileId).startsWith(sessionDir)` and `.jsonl` extension validation.
+- `SessionList` component renders past sessions in the sidebar with 5s polling.
+- `FullTranscriptViewer` component renders past session entries read-only in place of live conversation.
