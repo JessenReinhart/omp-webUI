@@ -22,7 +22,7 @@ export function CollabControls({
   const statusLabel = STATUS_LABELS[status];
 
   return (
-    <div className="connection-controls" role="group" aria-label="Collaboration connection controls">
+    <div className="connection-controls" role="group" aria-label="Session connection controls">
       <span className={`agent-status${isLive ? " live" : ""}`} role="status" aria-live="polite">
         <i aria-hidden="true" />
         {statusLabel}
@@ -32,7 +32,7 @@ export function CollabControls({
 
       {error && (
         <span role="alert">
-          The collaboration connection failed. No connection details are shown for security.
+          The session connection failed. No connection details are shown for security.
         </span>
       )}
 
@@ -40,7 +40,7 @@ export function CollabControls({
         <button
           type="button"
           onClick={onReconnect}
-          aria-label="Retry collaboration connection"
+          aria-label="Retry session connection"
           disabled={busy}
         >
           Retry
@@ -51,7 +51,7 @@ export function CollabControls({
         <button
           type="button"
           onClick={onDisconnect}
-          aria-label="Disconnect collaboration session"
+          aria-label="Disconnect session"
         >
           Disconnect
         </button>

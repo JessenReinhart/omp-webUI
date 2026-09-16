@@ -4,7 +4,7 @@
 
 **OMP owns intelligence and execution. omp-webUI owns interaction and visualization.**
 
-The project must not scrape terminal ANSI output. OMP already exposes structured extension events, a local collab-host registry, and the `pi-wire` collaboration protocol.
+The project must not scrape terminal ANSI output. OMP exposes structured extension events; this plugin captures those events inside the current OMP process and forwards them through its authenticated loopback server.
 
 ## Bootstrap path
 
@@ -13,11 +13,11 @@ running OMP process
   |
   | OMP extension: /webui
   v
-loopback server (127.0.0.1)
+local runtime cache + bounded event ring
   |
-  | discovers process.pid via:
-  | omp collab list --json
-  | omp collab link <instanceId> --json
+  | token-gated loopback server (127.0.0.1)
+  | GET /api/session, GET /api/events (SSE)
+  | POST /api/prompt, POST /api/abort
   v
 React workspace
   |
@@ -28,22 +28,11 @@ React workspace
   +-- plugin registry
 ```
 
-The control link is never rendered into the page. The browser receives it only from an authenticated loopback API so the future `pi-wire` adapter can connect.
+`/webui` works without `/collab`. The extension retains the active OMP API and context, emits sequence-numbered frames into a 500-entry in-memory ring, and sends a session snapshot followed by missed and live frames over Server-Sent Events. The authenticated URL token gates every session API endpoint and is never logged or rendered by the application.
 
-## Why collab instead of PTY mirroring?
+## Why native extension events instead of PTY mirroring?
 
-Collab already carries semantic frames for:
-
-- durable transcript entries
-- streaming agent events
-- state/context/model snapshots
-- subagent registry and progress
-- subagent transcript fetches
-- prompt / abort
-- agent chat / kill / revive
-- interactive UI requests
-
-That gives the browser real application state rather than a terminal recording.
+Native extension events carry semantic messages, tool activity, turn state, and session state. This gives the browser real application state rather than a terminal recording, without a second collab control connection.
 
 ## Extensibility model
 
@@ -75,15 +64,14 @@ The host/client protocol and permission model will be designed after the native 
 
 ## Milestones
 
-1. **Bootstrap**: installable OMP extension, `/webui`, loopback server, discover current OMP collab host.
-2. **Native wire client**: parse collab link, connect with `@oh-my-pi/pi-wire`, render transcript + streaming events, prompt + abort.
+1. **Bootstrap**: installable OMP extension, `/webui`, loopback server, local event ring with SSE streaming.
+2. **Local session client**: connect from the browser via authenticated SSE, render transcript + streaming events, prompt + abort.
 3. **Agent Hub**: agents frames, progress bus, transcript fetch, steer/kill/revive.
 4. **Plugin runtime**: typed host/client API, UI slots, command/event services, lifecycle/disposal.
 5. **Workspace plugins**: Git/diff, filesystem, browser preview, terminal, dev-server detection.
 
 ## Security
 
-- HTTP server binds to `127.0.0.1` only.
-- A random per-server token protects the local session-discovery endpoint.
-- Collab control URLs are secrets and must never be logged or displayed.
+- A random per-server token protects all `/api/*` endpoints.
+- The token is passed only in the authenticated URL and is never logged or displayed in the UI.
 - Third-party plugins will require explicit capability declarations before privileged host APIs are exposed.

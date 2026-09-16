@@ -18,7 +18,6 @@
     "extensions": ["./src/extension/index.ts"]
   },
   "dependencies": {
-    "@oh-my-pi/pi-wire": "^18.1.21",
     "lucide-react": "^1.24.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7"

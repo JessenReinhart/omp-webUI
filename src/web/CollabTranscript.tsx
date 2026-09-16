@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
-import { COLLAB_PROMPT_MESSAGE_TYPE } from "@oh-my-pi/pi-wire";
-import type { AgentEvent, SessionEntry, WireMessage } from "@oh-my-pi/pi-wire";
+import type { AgentEvent, SessionEntry, WireMessage } from "./collabTypes";
+const COLLAB_PROMPT_MESSAGE_TYPE = "collab-prompt";
 import type { CollabTranscriptProps } from "./collabTypes";
 
 type UnknownRecord = Record<string, unknown>;
@@ -95,7 +95,7 @@ function MessageContent({ message }: { message: WireMessage }) {
               return <p key={index} className="collab-muted">Unsupported assistant content</p>;
           }
         })}
-        {asText(message.errorMessage) ? <p className="collab-error">{message.errorMessage}</p> : null}
+        {asText(message.errorMessage) ? <p className="collab-error">{asText(message.errorMessage)}</p> : null}
       </>
     );
   }
@@ -214,7 +214,7 @@ function toolActivities(events: AgentEvent[], entries: SessionEntry[]): ToolActi
 function notices(events: AgentEvent[]): NoticeView[] {
   const found: NoticeView[] = [];
   for (const event of events) {
-    if (!isRecord(event) || event.type !== "notice") continue;
+    if (event.type !== "notice") continue;
     found.push({ level: asText(event.level) ?? "info", message: asText(event.message) ?? "Notice" });
   }
   return found.slice(-3);
