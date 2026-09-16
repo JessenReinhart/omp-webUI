@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { extname, join, normalize, relative } from "node:path";
-import { getCurrentCollabConnection } from "./collab-registry";
+import { getEventRing, getWebUiRuntime, subscribeStream } from "../extension/index";
 
 const HOST = "127.0.0.1";
 const FIRST_PORT = 4380;
@@ -48,27 +48,133 @@ async function handler(request: Request, token: string): Promise<Response> {
   if (url.pathname === "/api/session") {
     if (!isAuthorized(url, token)) return json({ error: "unauthorized" }, 401);
 
-    try {
-      const connection = await getCurrentCollabConnection();
-      if (!connection) {
-        return json({
-          connected: false,
-          reason:
-            "No collab host is published for this OMP process. Run /collab or enable collab.autoStart=control.",
-        });
-      }
+    const runtime = getWebUiRuntime();
+    if (!runtime?.ctx) {
+      return json({
+        connected: false,
+        reason: "No active OMP session runtime. Reload the extension.",
+      });
+    }
 
+    try {
+      const sessionName = runtime.api.getSessionName() || runtime.ctx.sessionManager?.getHeader()?.title;
       return json({
         connected: true,
-        host: connection.host,
-        access: connection.access,
-        collabUrl: connection.url,
+        host: {
+          sessionName,
+          cwd: runtime.ctx.cwd,
+          model: runtime.ctx.model,
+        },
+        transport: "local",
       });
     } catch (error) {
       return json({
         connected: false,
         error: error instanceof Error ? error.message : String(error),
       });
+    }
+  }
+
+  if (url.pathname === "/api/events") {
+    if (!isAuthorized(url, token)) return json({ error: "unauthorized" }, 401);
+
+    const cursorParam = url.searchParams.get("cursor");
+    const cursor = cursorParam ? Number.parseInt(cursorParam, 10) : undefined;
+    const missed = getEventRing(cursor);
+
+    const runtime = getWebUiRuntime();
+    const header = runtime?.ctx?.sessionManager?.getHeader() ?? null;
+    const branchEntries = runtime?.ctx?.sessionManager?.getBranch() ?? [];
+
+    const stream = new ReadableStream({
+      start(controller) {
+        const encoder = new TextEncoder();
+        const send = (data: unknown) => {
+          try {
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
+          } catch {
+            // stream closed
+          }
+        };
+
+        // If client reconnected without a cursor, send snapshot first
+        if (cursor === undefined || Number.isNaN(cursor)) {
+          send({
+            seq: 0,
+            kind: "snapshot",
+            header,
+            entries: branchEntries,
+            state: { isStreaming: runtime?.ctx ? !runtime.ctx.isIdle() : false },
+            agents: [],
+          });
+        }
+
+        // Send missed buffered frames
+        for (const frame of missed) {
+          send(frame);
+        }
+
+        // Subscribe to future frames
+        const unsubscribe = subscribeStream((frame) => {
+          send(frame);
+        });
+
+        // Keepalive ping
+        const pingTimer = setInterval(() => {
+          try {
+            controller.enqueue(encoder.encode(": ping\n\n"));
+          } catch {
+            clearInterval(pingTimer);
+            unsubscribe();
+          }
+        }, 15000);
+      },
+    });
+
+    return new Response(stream, {
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-store",
+        Connection: "keep-alive",
+      },
+    });
+  }
+
+  if (url.pathname === "/api/prompt" && request.method === "POST") {
+    if (!isAuthorized(url, token)) return json({ error: "unauthorized" }, 401);
+
+    try {
+      const body = (await request.json()) as { text?: string };
+      const text = body.text?.trim();
+      if (!text) {
+        return json({ error: "Prompt text cannot be empty" }, 400);
+      }
+
+      const runtime = getWebUiRuntime();
+      if (!runtime?.api) {
+        return json({ error: "No active OMP session runtime" }, 503);
+      }
+
+      runtime.api.sendUserMessage(text);
+      return json({ ok: true });
+    } catch (error) {
+      return json({ error: error instanceof Error ? error.message : String(error) }, 500);
+    }
+  }
+
+  if (url.pathname === "/api/abort" && request.method === "POST") {
+    if (!isAuthorized(url, token)) return json({ error: "unauthorized" }, 401);
+
+    try {
+      const runtime = getWebUiRuntime();
+      if (!runtime?.ctx) {
+        return json({ error: "No active OMP session runtime" }, 503);
+      }
+
+      runtime.ctx.abort();
+      return json({ ok: true });
+    } catch (error) {
+      return json({ error: error instanceof Error ? error.message : String(error) }, 500);
     }
   }
 

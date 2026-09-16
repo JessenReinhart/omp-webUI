@@ -1,10 +1,52 @@
-import type {
-  SessionEntry,
-  AgentEvent,
-  SessionState,
-  AgentSnapshot,
-  SessionHeader,
-} from "@oh-my-pi/pi-wire";
+export interface TextContent {
+  type: "text";
+  text: string;
+}
+
+export interface WireMessage {
+  role: "user" | "developer" | "assistant" | "toolResult";
+  content: string | TextContent[] | unknown[];
+  timestamp: number;
+  toolCallId?: string;
+  toolName?: string;
+  isError?: boolean;
+  [key: string]: unknown;
+}
+
+export interface SessionEntry {
+  id: string;
+  type: string;
+  message?: WireMessage;
+  [key: string]: unknown;
+}
+
+export type AgentEvent =
+  | { type: "agent_start" | "agent_end" | "turn_start" | "turn_end" }
+  | { type: "message_start" | "message_update" | "message_end"; message: WireMessage }
+  | { type: "tool_execution_start" | "tool_execution_update" | "tool_execution_end"; toolCallId: string; toolName: string; args?: unknown; partialResult?: unknown; result?: unknown; isError?: boolean; intent?: string }
+  | { type: "notice"; level?: string; message?: string };
+
+export interface SessionState {
+  isStreaming?: boolean;
+  queuedMessageCount?: number;
+  [key: string]: unknown;
+}
+
+export interface AgentSnapshot {
+  id: string;
+  displayName: string;
+  kind: "main" | "sub";
+  status: string;
+  lastActivity?: number;
+  hasSessionFile?: boolean;
+}
+
+export interface SessionHeader {
+  type?: string;
+  id?: string;
+  title?: string;
+  [key: string]: unknown;
+}
 
 export type CollabStatus =
   | "idle"
@@ -16,32 +58,20 @@ export type CollabStatus =
 
 export interface CollabSession {
   status: CollabStatus;
-  /** True once the host has welcomed us and the snapshot is (at least partially) loaded. */
   ready: boolean;
-  /** Snapshot header received in welcome. */
   header: SessionHeader | null;
-  /** Full session transcript entries, in order. */
   entries: SessionEntry[];
-  /** Live agent events (thinking, tool use, messages deltas, etc.). Kept bounded. */
   events: AgentEvent[];
-  /** Latest host-reported session state. */
   state: SessionState | null;
-  /** Latest agent snapshot. */
   agents: AgentSnapshot[];
-  /** Whether the connection is read-only (no write token). */
   readOnly: boolean;
-  /** Human-readable error, if any. Never contains secrets. */
   error: string | null;
 }
 
 export interface UseCollabSessionReturn extends CollabSession {
-  /** Send a user prompt to the live session. */
   sendPrompt(text: string): Promise<void>;
-  /** Abort the current generation/turn. */
   sendAbort(): Promise<void>;
-  /** Manually reconnect after a close/error. */
   reconnect(): void;
-  /** Close the connection and stop reconnection attempts. */
   disconnect(): void;
 }
 
@@ -49,7 +79,6 @@ export interface CollabTranscriptProps {
   entries: SessionEntry[];
   events: AgentEvent[];
   status: CollabStatus;
-  /** Ref forwarded to the scrollable transcript container. */
   scrollRef?: React.Ref<HTMLDivElement>;
 }
 
@@ -68,3 +97,4 @@ export interface CollabControlsProps {
   onReconnect(): void;
   onDisconnect(): void;
 }
+

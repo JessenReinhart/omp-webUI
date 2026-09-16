@@ -12,7 +12,7 @@ Keep OMP as the agent runtime, while providing a richer browser workspace for:
 - viewing session/context/model state
 - adding first-class UI extensions through a plugin/slot system
 
-The project intentionally builds on OMP's native extension system and collab protocol instead of scraping terminal output.
+The project intentionally builds on OMP's native extension event stream instead of scraping terminal output.
 
 ## Current bootstrap
 
@@ -20,14 +20,13 @@ The first vertical slice is:
 
 ```text
 running OMP
-  -> /collab (or collab.autoStart=control)
   -> /webui
-  -> loopback web server
+  -> loopback web server (127.0.0.1, token-gated)
   -> browser shell
-  -> discover this exact OMP process through the collab host registry
+  -> local session snapshot + SSE event stream from the OMP extension runtime
 ```
 
-The browser transport is intentionally the next slice. The current UI verifies that the plugin can identify the live host and obtain its collab endpoint without terminal scraping.
+`/webui` works standalone: the extension captures structured OMP session events into an in-memory ring (bounded to 500 frames), and the loopback server streams them to the browser over SSE. No `/collab` command, collab-host registry, or `pi-wire` connection is involved.
 
 ## Local development
 
@@ -44,14 +43,12 @@ omp plugin link .
 Restart OMP, then:
 
 ```text
-/collab
 /webui
 ```
 
 OMP prints the local authenticated URL for the browser workspace. Use `/webui stop` to stop the local server.
 
 For frontend-only work:
-
 ```bash
 bun run dev
 ```
