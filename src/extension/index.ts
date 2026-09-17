@@ -1,17 +1,17 @@
-import type { ExtensionAPI, ExtensionContext } from "@oh-my-pi/pi-coding-agent";
+import type { ExtensionAPI, ExtensionCommandContext } from "@oh-my-pi/pi-coding-agent";
 import { startWebUiServer, type WebUiServer } from "../host/server";
 
 let server: WebUiServer | undefined;
 let cachedApi: ExtensionAPI | null = null;
-let cachedCtx: ExtensionContext | null = null;
+let cachedCtx: ExtensionCommandContext | null = null;
 
-export function getWebUiRuntime(): { api: ExtensionAPI; ctx: ExtensionContext | null } | null {
+export function getWebUiRuntime(): { api: ExtensionAPI; ctx: ExtensionCommandContext | null } | null {
   if (!cachedApi) return null;
   return { api: cachedApi, ctx: cachedCtx };
 }
 
 export type LocalFrameBase =
-  | { kind: "snapshot"; entries: unknown[]; header?: unknown }
+  | { kind: "snapshot"; entries: unknown[]; header?: unknown; state?: unknown; agents?: unknown }
   | { kind: "message"; type: string; message: unknown }
   | { kind: "tool"; type: string; toolCallId: string; toolName: string; args?: unknown; partialResult?: unknown; result?: unknown; isError?: boolean; intent?: string }
   | { kind: "state"; state: unknown };
@@ -38,7 +38,7 @@ export function getEventRing(cursor?: number): LocalFrame[] {
   return eventRing.filter((frame) => frame.seq > cursor);
 }
 
-function broadcast(frame: LocalFrameBase) {
+export function broadcast(frame: LocalFrameBase) {
   globalSeq += 1;
   const fullFrame: LocalFrame = { seq: globalSeq, ...frame };
   eventRing.push(fullFrame);

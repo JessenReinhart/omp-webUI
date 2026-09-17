@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { basename, extname, join, normalize, relative, resolve } from "node:path";
 import { FileSessionStorage, listSessions, loadSessionFile } from "@oh-my-pi/pi-coding-agent";
 import { computeDefaultSessionDir } from "@oh-my-pi/pi-coding-agent/session/session-paths";
-import { getEventRing, getWebUiRuntime, subscribeStream } from "../extension/index";
+import { broadcast, getEventRing, getWebUiRuntime, subscribeStream } from "../extension/index";
 
 const HOST = "127.0.0.1";
 const FIRST_PORT = 4380;
@@ -42,6 +42,32 @@ function assetPath(pathname: string) {
   const rel = relative(DIST, candidate);
   if (rel.startsWith("..") || rel.includes("..")) return null;
   return candidate;
+}
+export function resolveSessionFile(fileId: string | null): string | null {
+  if (!fileId || !fileId.endsWith(".jsonl") || fileId.includes("/") || fileId.includes("\\") || fileId.includes("..")) {
+    return null;
+  }
+  const cwd = getWebUiRuntime()?.ctx?.cwd ?? process.cwd();
+  const storage = new FileSessionStorage();
+  const sessionDir = computeDefaultSessionDir(cwd, storage);
+  const filePath = resolve(sessionDir, fileId);
+  return filePath.startsWith(sessionDir) ? filePath : null;
+}
+
+// Emit a fresh snapshot frame after operations that swap which session is live
+// (e.g. switchSession) so connected browsers re-render immediately.
+function broadcastSnapshot(): void {
+  const runtime = getWebUiRuntime();
+  const header = runtime?.ctx?.sessionManager?.getHeader() ?? null;
+  const entries = runtime?.ctx?.sessionManager?.getBranch() ?? [];
+  const isStreaming = runtime?.ctx ? !runtime.ctx.isIdle() : false;
+  broadcast({
+    kind: "snapshot",
+    entries,
+    header,
+    state: { isStreaming },
+    agents: [],
+  });
 }
 
 async function handler(request: Request, token: string): Promise<Response> {
@@ -101,25 +127,43 @@ async function handler(request: Request, token: string): Promise<Response> {
     }
   }
 
-  if (url.pathname.startsWith("/api/sessions/")) {
+  // POST /api/sessions/:fileId.jsonl/resume — make a past session the live one.
+  if (url.pathname.startsWith("/api/sessions/") && url.pathname.endsWith("/resume")) {
+    if (request.method !== "POST") return json({ error: "Method not allowed" }, 405);
     if (!isAuthorized(url, token)) return json({ error: "unauthorized" }, 401);
 
     try {
-      const fileId = url.searchParams.get("fileId") || url.pathname.replace("/api/sessions/", "");
-      if (!fileId || !fileId.endsWith(".jsonl") || fileId.includes("/") || fileId.includes("\\") || fileId.includes("..")) {
-        return json({ error: "Invalid fileId parameter" }, 400);
-      }
+      const fileId = decodeURIComponent(url.pathname.slice("/api/sessions/".length, -"/resume".length));
+      const filePath = resolveSessionFile(fileId);
+      if (!filePath) return json({ error: "Invalid fileId parameter" }, 400);
 
-      const cwd = getWebUiRuntime()?.ctx?.cwd ?? process.cwd();
-      const storage = new FileSessionStorage();
-      const sessionDir = computeDefaultSessionDir(cwd, storage);
-      const filePath = resolve(sessionDir, fileId);
+      const runtime = getWebUiRuntime();
+      if (!runtime?.ctx) return json({ error: "No active OMP session runtime" }, 503);
 
-      if (!filePath.startsWith(sessionDir)) {
-        return json({ error: "Access denied" }, 403);
-      }
+      const result = await runtime.ctx.switchSession(filePath);
+      if (result.cancelled) return json({ error: "Session switch was cancelled" }, 409);
 
-      const result = await loadSessionFile(filePath, storage);
+      // The browser still holds the previous session's transcript; push a fresh
+      // snapshot so it renders the resumed session without a reconnect.
+      broadcastSnapshot();
+      return json({ ok: true });
+    } catch (error) {
+      return json({ error: error instanceof Error ? error.message : String(error) }, 500);
+    }
+  }
+
+  // GET /api/sessions/:fileId.jsonl — read-only transcript.
+  if (url.pathname.startsWith("/api/sessions/")) {
+    if (request.method !== "GET") return json({ error: "Method not allowed" }, 405);
+    if (!isAuthorized(url, token)) return json({ error: "unauthorized" }, 401);
+
+    try {
+      const fileId =
+        url.searchParams.get("fileId") ?? decodeURIComponent(url.pathname.slice("/api/sessions/".length));
+      const filePath = resolveSessionFile(fileId);
+      if (!filePath) return json({ error: "Invalid fileId parameter" }, 400);
+
+      const result = await loadSessionFile(filePath, new FileSessionStorage());
       return json({ ok: true, entries: result.entries });
     } catch (error) {
       return json({ error: error instanceof Error ? error.message : String(error) }, 500);
@@ -137,6 +181,7 @@ async function handler(request: Request, token: string): Promise<Response> {
     const header = runtime?.ctx?.sessionManager?.getHeader() ?? null;
     const branchEntries = runtime?.ctx?.sessionManager?.getBranch() ?? [];
 
+    let cleanupStream: (() => void) | null = null;
     const stream = new ReadableStream({
       start(controller) {
         const encoder = new TextEncoder();
@@ -148,8 +193,9 @@ async function handler(request: Request, token: string): Promise<Response> {
           }
         };
 
-        // If client reconnected without a cursor, send snapshot first
-        if (cursor === undefined || Number.isNaN(cursor)) {
+        // Clients without a live cursor get a full snapshot. cursor=0 counts as
+        // fresh: lastSeqRef starts at 0 on first connect.
+        if (!cursor || Number.isNaN(cursor)) {
           send({
             seq: 0,
             kind: "snapshot",
@@ -175,10 +221,18 @@ async function handler(request: Request, token: string): Promise<Response> {
           try {
             controller.enqueue(encoder.encode(": ping\n\n"));
           } catch {
-            clearInterval(pingTimer);
-            unsubscribe();
+            cleanupStream?.();
           }
         }, 15000);
+
+        cleanupStream = () => {
+          clearInterval(pingTimer);
+          unsubscribe();
+          cleanupStream = null;
+        };
+      },
+      cancel() {
+        cleanupStream?.();
       },
     });
 
@@ -256,6 +310,7 @@ export async function startWebUiServer(): Promise<WebUiServer> {
         hostname: HOST,
         port,
         fetch: (request) => handler(request, token),
+        idleTimeout: 0,
       });
 
       return {
