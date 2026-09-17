@@ -76,6 +76,39 @@ export function App() {
   const [session, setSession] = useState<SessionResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const authToken = useMemo(() => new URLSearchParams(window.location.search).get("token") ?? "", []);
+  // Session discovery: poll the loopback API until an active OMP runtime answers.
+  const [sessionNonce, setSessionNonce] = useState(0);
+  useEffect(() => {
+    const controller = new AbortController();
+    let active = true;
+
+    const refresh = async () => {
+      try {
+        const response = await fetch(`/api/session?token=${encodeURIComponent(authToken)}`, {
+          signal: controller.signal,
+        });
+        const payload = (await response.json().catch(() => null)) as SessionResponse | null;
+        if (!active) return;
+        if (!response.ok || !payload) {
+          setSession(null);
+        } else {
+          setSession(payload);
+        }
+      } catch {
+        if (active) setSession(null);
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+
+    void refresh();
+    const intervalId = window.setInterval(refresh, 2500);
+    return () => {
+      active = false;
+      controller.abort();
+      window.clearInterval(intervalId);
+    };
+  }, [authToken, sessionNonce]);
 
   // Past session state
   const [pastSessionId, setPastSessionId] = useState<string | null>(null);
@@ -174,6 +207,42 @@ export function App() {
     if (!pastSessionId) return;
     void handleSelectSession(pastSessionId, pastSessionTitle ?? undefined);
   }, [pastSessionId, pastSessionTitle, handleSelectSession]);
+  // Resume a past session: make it the active OMP session via switchSession,
+  // then drop back to the live view so the composer works immediately.
+  const [resumingPast, setResumingPast] = useState(false);
+  const [resumeError, setResumeError] = useState<string | null>(null);
+  const handleResumePastSession = useCallback(async () => {
+    if (!pastSessionId || resumingPast) return;
+    setResumingPast(true);
+    setResumeError(null);
+    try {
+      const url = `/api/sessions/${encodeURIComponent(pastSessionId)}/resume?token=${encodeURIComponent(authToken)}`;
+      const response = await fetch(url, { method: "POST" });
+      if (!response.ok) {
+        if (response.status === 401 || response.status === 403) {
+          setResumeError("Couldn’t resume this session (not authorized).");
+        } else if (response.status === 409) {
+          setResumeError("Session switch was cancelled.");
+        } else if (response.status >= 500) {
+          setResumeError("Couldn’t resume this session. The server hit an error.");
+        } else {
+          setResumeError("Couldn’t resume this session. Try again.");
+        }
+        return;
+      }
+      const payload = (await response.json().catch(() => null)) as { ok?: boolean } | null;
+      if (!payload || payload.ok !== true) {
+        setResumeError("Couldn’t resume this session. Try again.");
+        return;
+      }
+      handleBackToLive();
+      setSessionNonce((n) => n + 1);
+    } catch {
+      setResumeError("Couldn’t resume this session. Check your connection and try again.");
+    } finally {
+      setResumingPast(false);
+    }
+  }, [authToken, pastSessionId, resumingPast, handleBackToLive]);
 
   const connected = Boolean(session?.connected);
   const collab = useLocalSession();
@@ -224,12 +293,28 @@ export function App() {
             <div className="past-session-container">
               <div className="past-session-header">
                 <div className="past-session-heading">
-                  <span className="past-session-kicker">Past session · read-only</span>
+                  <span className="past-session-kicker">Viewed past session</span>
                   <h1 className="past-session-title">{pastSessionTitle || pastSessionId}</h1>
                 </div>
-                <button className="past-session-back" type="button" onClick={handleBackToLive}>
-                  ← Back to live session
-                </button>
+                <div className="past-session-header-actions">
+                  <button
+                    className="past-session-resume"
+                    type="button"
+                    onClick={handleResumePastSession}
+                    disabled={resumingPast}
+                    aria-busy={resumingPast}
+                  >
+                    {resumingPast ? "Resuming…" : "Resume in OMP"}
+                  </button>
+                  <button className="past-session-back" type="button" onClick={handleBackToLive}>
+                    ← Back to live
+                  </button>
+                  {resumeError && (
+                    <span className="past-session-resume-error" role="status">
+                      {resumeError}
+                    </span>
+                  )}
+                </div>
               </div>
               {loadingPast ? (
                 <div className="past-session-state" role="status" aria-live="polite" aria-busy="true">
