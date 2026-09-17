@@ -1,4 +1,5 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "@oh-my-pi/pi-coding-agent";
+import { openBrowser } from "../host/open-browser";
 import { startWebUiServer, type WebUiServer } from "../host/server";
 
 let server: WebUiServer | undefined;
@@ -216,7 +217,19 @@ export default function webUiExtension(pi: ExtensionAPI) {
         }
       }
 
-      ctx.ui.notify(`omp-webUI: ${server.url}`, "info");
+      if (command === "url") {
+        // Explicit escape hatch for headless/minimal environments. This is the
+        // only path that intentionally renders the token-bearing URL.
+        ctx.ui.notify(`omp-webUI: ${server.url}`, "info");
+        return;
+      }
+
+      const opened = await openBrowser(server.url);
+      if (opened) {
+        ctx.ui.notify("omp-webUI opened in your browser", "info");
+      } else {
+        ctx.ui.notify("Couldn't launch the default browser. Run /webui url to print the local URL.", "warning");
+      }
     },
   });
 
