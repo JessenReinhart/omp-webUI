@@ -22,6 +22,7 @@ The first vertical slice is:
 running OMP
   -> /webui
   -> loopback web server (127.0.0.1, token-gated)
+  -> default browser opens automatically
   -> browser shell
   -> local session snapshot + SSE event stream from the OMP extension runtime
 ```
@@ -46,7 +47,16 @@ Restart OMP, then:
 /webui
 ```
 
-OMP prints the local authenticated URL for the browser workspace. Use `/webui stop` to stop the local server.
+The plugin starts the authenticated loopback server and opens the workspace in your default browser automatically.
+
+Useful variants:
+
+```text
+/webui url   # print the authenticated URL instead of opening a browser
+/webui stop  # stop the local WebUI server
+```
+
+A native top-level command such as `omp webui` is not currently exposed by OMP's extension API: top-level CLI subcommands are registered by OMP core, while plugins can register slash commands. The browser-launch behavior therefore lives behind `/webui` without patching the OMP installation.
 
 For frontend-only work:
 ```bash
@@ -62,6 +72,10 @@ The intended direction is Cordis-like extensibility without making every core su
 ## Manual QA Checklist
 
 After changes, verify:
+- Open `/webui`; the default browser launches once with the authenticated workspace URL.
+- Run `/webui` again; the existing server is reused and a browser tab opens successfully.
+- Run `/webui url`; the authenticated URL is shown without launching a browser.
+- Run `/webui stop`; the local server stops cleanly.
 - Open `/webui` with long-running session (full transcript history visible), scroll (all entries present).
 - Send 3+ prompts (including tools), all past turns persist after turn_end.
 - Refresh page, reconnect, select past session → load/resume error handling works.
@@ -73,5 +87,5 @@ For integration:
 bun run check
 bun run build
 omp plugin link .
-# Restart OMP, /webui, /webui stop
+# Restart OMP, /webui, /webui url, /webui stop
 ```
