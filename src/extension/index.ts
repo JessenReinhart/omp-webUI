@@ -18,8 +18,42 @@ export type LocalFrameBase =
 
 export type LocalFrame = { seq: number } & LocalFrameBase;
 
+export interface SnapshotFrameBase {
+  kind: "snapshot";
+  header: unknown;
+  entries: unknown[];
+  state: { isStreaming: boolean };
+  agents: unknown[];
+}
+
+// One shared snapshot builder for every snapshot path (turn_end, session_start,
+// switchSession/resume, and the fresh SSE connect in server.ts) so the frame
+// shape stays identical and clients always commit from the same source.
+export function buildSnapshotFrameBase(): SnapshotFrameBase {
+  const ctx = getWebUiRuntime()?.ctx ?? null;
+  const header = ctx?.sessionManager?.getHeader() ?? null;
+  const entries = ctx?.sessionManager?.getBranch() ?? [];
+  const isStreaming = ctx ? !ctx.isIdle() : false;
+  return {
+    kind: "snapshot",
+    header,
+    entries,
+    state: { isStreaming },
+    agents: [],
+  };
+}
+
+function snapshotHeaderId(header: unknown): string | null {
+  if (typeof header !== "object" || header === null) return null;
+  const id = (header as { id?: unknown }).id;
+  return typeof id === "string" ? id : null;
+}
+
 const EVENT_LIMIT = 500;
+const TURN_END_SNAPSHOT_DEFER_MS = 50;
 let globalSeq = 0;
+let latestSnapshotSeq = 0;
+let latestSnapshotHeaderId: string | null = null;
 const eventRing: LocalFrame[] = [];
 type StreamListener = (frame: LocalFrame) => void;
 const streamListeners = new Set<StreamListener>();
@@ -38,7 +72,7 @@ export function getEventRing(cursor?: number): LocalFrame[] {
   return eventRing.filter((frame) => frame.seq > cursor);
 }
 
-export function broadcast(frame: LocalFrameBase) {
+export function broadcast(frame: LocalFrameBase): LocalFrame {
   globalSeq += 1;
   const fullFrame: LocalFrame = { seq: globalSeq, ...frame };
   eventRing.push(fullFrame);
@@ -52,6 +86,19 @@ export function broadcast(frame: LocalFrameBase) {
       // ignore broken listeners
     }
   }
+  return fullFrame;
+}
+
+// Shared emitter for the resume/switchSession path (server.ts) and the
+// event-driven paths below. It broadcasts the shared snapshot frame and
+// records its (seq, headerId) so a deferred turn_end snapshot can detect that
+// a newer snapshot for a different session has already committed the transcript.
+export function broadcastSnapshot(): LocalFrame {
+  const base = buildSnapshotFrameBase();
+  const frame = broadcast(base);
+  latestSnapshotSeq = frame.seq;
+  latestSnapshotHeaderId = snapshotHeaderId(base.header);
+  return frame;
 }
 
 export default function webUiExtension(pi: ExtensionAPI) {
@@ -61,14 +108,36 @@ export default function webUiExtension(pi: ExtensionAPI) {
   // Subscribe to all streaming/message events once at extension scope
   pi.on("session_start", () => {
     broadcast({ kind: "state", state: { sessionStarted: true } });
+    broadcastSnapshot();
   });
 
   pi.on("turn_start", () => {
     broadcast({ kind: "state", state: { isStreaming: true } });
   });
 
-  pi.on("turn_end", () => {
-    broadcast({ kind: "state", state: { isStreaming: false } });
+  pi.on("turn_end", (_event, eventCtx) => {
+    // Emit streaming state, then a fresh snapshot so the client commits the
+    // finished turn. turn_end fires after the in-memory branch is appended, but
+    // the partial-stream error path can append the final assistant message just
+    // after it, so defer the snapshot via the OMP-managed runtime timer and
+    // guard against clobbering a newer session's snapshot.
+    const stateFrame = broadcast({ kind: "state", state: { isStreaming: false } });
+    const scheduledHeaderId = snapshotHeaderId(eventCtx?.sessionManager?.getHeader() ?? null);
+
+    const emitTurnSnapshot = () => {
+      // Stale guard: a snapshot emitted after this turn ended for a different
+      // session (e.g. switchSession/resume) wins; never overwrite it.
+      if (latestSnapshotSeq > stateFrame.seq && latestSnapshotHeaderId !== scheduledHeaderId) {
+        return;
+      }
+      broadcastSnapshot();
+    };
+
+    if (typeof eventCtx?.setTimeout === "function") {
+      eventCtx.setTimeout(emitTurnSnapshot, TURN_END_SNAPSHOT_DEFER_MS);
+    } else {
+      emitTurnSnapshot();
+    }
   });
 
   pi.on("message_start", (e) => {
