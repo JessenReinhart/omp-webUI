@@ -1,4 +1,4 @@
-import { Paperclip, Send, Square } from "lucide-react";
+import { Send, Square } from "lucide-react";
 import { useId, useState, type FormEvent, type KeyboardEvent } from "react";
 import type { CollabComposerProps } from "./collabTypes";
 
@@ -22,7 +22,7 @@ export function CollabComposer({
     if (!canSend) return;
 
     setIsSending(true);
-    setFeedback("Sending message...");
+    setFeedback("Sending message…");
     try {
       await onSend(trimmedDraft);
       setDraft("");
@@ -35,10 +35,8 @@ export function CollabComposer({
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
-    // Enter sends, Shift+Enter inserts a newline
-    if (event.key !== "Enter") return;
-    if (event.shiftKey) return;
-
+    // Enter sends, Shift+Enter inserts a newline.
+    if (event.key !== "Enter" || event.shiftKey) return;
     event.preventDefault();
     event.currentTarget.form?.requestSubmit();
   }
@@ -46,7 +44,7 @@ export function CollabComposer({
   async function handleAbort() {
     if (disabled || !isStreaming || !onAbort || isSending) return;
     setIsSending(true);
-    setFeedback("Requesting abort...");
+    setFeedback("Requesting abort…");
     try {
       await onAbort();
       setFeedback("Abort requested.");
@@ -58,50 +56,51 @@ export function CollabComposer({
   }
 
   return (
-    <form className="composer" onSubmit={handleSubmit} aria-describedby={feedbackId}>
-      <button
-        className="composer-icon"
-        type="button"
-        aria-label="Attach file (not available)"
-        disabled
-      >
-        <Paperclip size={18} aria-hidden="true" />
-      </button>
+    <div className="composer-dock">
+      <form className="composer" onSubmit={handleSubmit} aria-describedby={feedbackId}>
+        <label className="visually-hidden" htmlFor={textareaId}>
+          Message to OMP
+        </label>
+        <textarea
+          id={textareaId}
+          value={draft}
+          disabled={disabled || isSending}
+          placeholder={placeholder}
+          rows={1}
+          onChange={(event) => {
+            setDraft(event.target.value);
+            if (feedback) setFeedback("");
+          }}
+          onKeyDown={handleKeyDown}
+        />
 
-      <label htmlFor={textareaId} style={{ position: "absolute", width: 1, height: 1, padding: 0, margin: -1, overflow: "hidden", clip: "rect(0, 0, 0, 0)", whiteSpace: "nowrap", border: 0 }}>
-        Message to OMP
-      </label>
-      <textarea
-        id={textareaId}
-        value={draft}
-        disabled={disabled || isSending}
-        placeholder={placeholder}
-        onChange={(event) => {
-          setDraft(event.target.value);
-          if (feedback) setFeedback("");
-        }}
-        onKeyDown={handleKeyDown}
-      />
+        <div id={feedbackId} className="composer-hint" role="status" aria-live="polite">
+          {feedback || (disabled ? "Messaging unavailable" : "Enter to send · Shift+Enter for newline")}
+        </div>
 
-      <div id={feedbackId} className="composer-hint" role="status" aria-live="polite">
-        {feedback || (disabled ? "Messaging unavailable" : "Enter to send, Shift+Enter for newline")}
-      </div>
-
-      {isStreaming ? (
-        <button
-          className="send-button"
-          type="button"
-          onClick={handleAbort}
-          disabled={disabled || !onAbort || isSending}
-          aria-label="Abort response"
-        >
-          <Square size={15} aria-hidden="true" />
-        </button>
-      ) : (
-        <button className="send-button" type="submit" disabled={!canSend} aria-label="Send message">
-          <Send size={17} aria-hidden="true" />
-        </button>
-      )}
-    </form>
+        {isStreaming ? (
+          <button
+            className="send-button is-abort"
+            type="button"
+            onClick={handleAbort}
+            disabled={disabled || !onAbort || isSending}
+            aria-label="Abort response"
+            title="Abort response"
+          >
+            <Square size={15} aria-hidden="true" />
+          </button>
+        ) : (
+          <button
+            className="send-button"
+            type="submit"
+            disabled={!canSend}
+            aria-label="Send message"
+            title="Send message"
+          >
+            <Send size={17} aria-hidden="true" />
+          </button>
+        )}
+      </form>
+    </div>
   );
 }

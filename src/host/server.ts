@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { basename, extname, join, normalize, relative, resolve } from "node:path";
 import { FileSessionStorage, listSessions, loadSessionFile } from "@oh-my-pi/pi-coding-agent";
 import { computeDefaultSessionDir } from "@oh-my-pi/pi-coding-agent/session/session-paths";
-import { broadcast, getEventRing, getWebUiRuntime, subscribeStream } from "../extension/index";
+import { broadcastSnapshot, getEventRing, getWebUiRuntime, subscribeStream } from "../extension/index";
 
 const HOST = "127.0.0.1";
 const FIRST_PORT = 4380;
@@ -52,22 +52,6 @@ export function resolveSessionFile(fileId: string | null): string | null {
   const sessionDir = computeDefaultSessionDir(cwd, storage);
   const filePath = resolve(sessionDir, fileId);
   return filePath.startsWith(sessionDir) ? filePath : null;
-}
-
-// Emit a fresh snapshot frame after operations that swap which session is live
-// (e.g. switchSession) so connected browsers re-render immediately.
-function broadcastSnapshot(): void {
-  const runtime = getWebUiRuntime();
-  const header = runtime?.ctx?.sessionManager?.getHeader() ?? null;
-  const entries = runtime?.ctx?.sessionManager?.getBranch() ?? [];
-  const isStreaming = runtime?.ctx ? !runtime.ctx.isIdle() : false;
-  broadcast({
-    kind: "snapshot",
-    entries,
-    header,
-    state: { isStreaming },
-    agents: [],
-  });
 }
 
 async function handler(request: Request, token: string): Promise<Response> {
@@ -177,10 +161,6 @@ async function handler(request: Request, token: string): Promise<Response> {
     const cursor = cursorParam ? Number.parseInt(cursorParam, 10) : undefined;
     const missed = getEventRing(cursor);
 
-    const runtime = getWebUiRuntime();
-    const header = runtime?.ctx?.sessionManager?.getHeader() ?? null;
-    const branchEntries = runtime?.ctx?.sessionManager?.getBranch() ?? [];
-
     let cleanupStream: (() => void) | null = null;
     const stream = new ReadableStream({
       start(controller) {
@@ -194,16 +174,11 @@ async function handler(request: Request, token: string): Promise<Response> {
         };
 
         // Clients without a live cursor get a full snapshot. cursor=0 counts as
-        // fresh: lastSeqRef starts at 0 on first connect.
+        // fresh: lastSeqRef starts at 0 on first connect. Broadcasting gets a real
+        // seq and inserts it into the ring (with event-ring buffering).
         if (!cursor || Number.isNaN(cursor)) {
-          send({
-            seq: 0,
-            kind: "snapshot",
-            header,
-            entries: branchEntries,
-            state: { isStreaming: runtime?.ctx ? !runtime.ctx.isIdle() : false },
-            agents: [],
-          });
+          const snapshot = broadcastSnapshot();
+          send(snapshot);
         }
 
         // Send missed buffered frames

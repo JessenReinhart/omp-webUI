@@ -58,3 +58,20 @@ bun run dev
 See [docs/architecture.md](docs/architecture.md).
 
 The intended direction is Cordis-like extensibility without making every core subsystem a plugin immediately. The web client begins with disposable UI slot registrations, then grows a typed host/client plugin API after the native OMP session stream is working.
+
+## Manual QA Checklist
+
+After changes, verify:
+- Open `/webui` with long-running session (full transcript history visible), scroll (all entries present).
+- Send 3+ prompts (including tools), all past turns persist after turn_end.
+- Refresh page, reconnect, select past session → load/resume error handling works.
+- Viewports: 1440/1100/900/390 (check transcript not crushed; composer visible on desktop/mobile).
+- Disconnected/read-only: no errors, clear state labels, offline/reconnect paths work.
+
+For integration:
+```bash
+bun run check
+bun run build
+omp plugin link .
+# Restart OMP, /webui, /webui stop
+```

@@ -1,4 +1,4 @@
-import { Circle, Terminal, Users } from "lucide-react";
+import { Menu, PanelRightClose, PanelRightOpen, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CollabComposer } from "./CollabComposer";
 import { CollabControls } from "./CollabControls";
@@ -57,17 +57,9 @@ function workspaceName(path?: string) {
 }
 
 function OmpMark() {
-  return <div className="omp-mark" aria-label="omp">π</div>;
-}
-
-function SessionRow({ title, subtitle, time }: { title: string; subtitle: string; time: string }) {
   return (
-    <div className="session-row active">
-      <div className="session-icon"><Circle size={13} strokeWidth={1.6} /></div>
-      <div className="session-copy">
-        <div className="session-title-line"><strong>{title}</strong><span>{time}</span></div>
-        <p>{subtitle}</p>
-      </div>
+    <div className="omp-mark" aria-hidden="true">
+      π
     </div>
   );
 }
@@ -78,6 +70,11 @@ export function App() {
   const authToken = useMemo(() => new URLSearchParams(window.location.search).get("token") ?? "", []);
   // Session discovery: poll the loopback API until an active OMP runtime answers.
   const [sessionNonce, setSessionNonce] = useState(0);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [agentsOpen, setAgentsOpen] = useState(false);
+  // Once the user explicitly opens/closes the agents panel, stop auto-opening it.
+  const agentsTouchedRef = useRef(false);
+
   useEffect(() => {
     const controller = new AbortController();
     let active = true;
@@ -89,11 +86,7 @@ export function App() {
         });
         const payload = (await response.json().catch(() => null)) as SessionResponse | null;
         if (!active) return;
-        if (!response.ok || !payload) {
-          setSession(null);
-        } else {
-          setSession(payload);
-        }
+        setSession(!response.ok || !payload ? null : payload);
       } catch {
         if (active) setSession(null);
       } finally {
@@ -122,7 +115,6 @@ export function App() {
   const pastFetchAbortRef = useRef<AbortController | null>(null);
   const pastFetchSeqRef = useRef<number>(0);
 
-  // Abort any in-flight past-session fetch when the component unmounts.
   useEffect(() => {
     return () => {
       pastFetchAbortRef.current?.abort();
@@ -131,7 +123,6 @@ export function App() {
 
   const handleSelectSession = useCallback(
     async (fileId: string, title?: string) => {
-      // Cancel any previous session transcript request and advance the sequence.
       pastFetchAbortRef.current?.abort();
       const ac = new AbortController();
       pastFetchAbortRef.current = ac;
@@ -142,28 +133,20 @@ export function App() {
       setLoadingPast(true);
       setErrorPast(null);
       setPastEntries([]);
+      setSidebarOpen(false);
 
       try {
         const url = `/api/sessions/${encodeURIComponent(fileId)}?token=${encodeURIComponent(authToken)}`;
         const response = await fetch(url, { signal: ac.signal });
-
         if (ac.signal.aborted || seq !== pastFetchSeqRef.current) return;
 
-        let data: TranscriptResponse | null = null;
-        try {
-          data = (await response.json()) as TranscriptResponse;
-        } catch {
-          data = null;
-        }
-
+        const data = (await response.json().catch(() => null)) as TranscriptResponse | null;
         if (ac.signal.aborted || seq !== pastFetchSeqRef.current) return;
 
         if (!response.ok || !data || data.ok !== true || !Array.isArray(data.entries)) {
           let failure: PastSessionFailure = "unreadable";
           if (response.status === 401 || response.status === 403) failure = "unauthorized";
           else if (response.status === 404) failure = "missing";
-          else if (response.status >= 500) failure = "unreadable";
-
           setErrorPast(PAST_SESSION_COPY[failure]);
           return;
         }
@@ -173,16 +156,13 @@ export function App() {
       } catch (err) {
         if (ac.signal.aborted || seq !== pastFetchSeqRef.current) return;
         if (err instanceof DOMException && err.name === "AbortError") return;
-
         const failure: PastSessionFailure =
           typeof navigator !== "undefined" && !navigator.onLine ? "offline" : "unreadable";
         setErrorPast(PAST_SESSION_COPY[failure]);
       } finally {
         if (seq === pastFetchSeqRef.current && !ac.signal.aborted) {
           setLoadingPast(false);
-          if (pastFetchAbortRef.current === ac) {
-            pastFetchAbortRef.current = null;
-          }
+          if (pastFetchAbortRef.current === ac) pastFetchAbortRef.current = null;
         }
       }
     },
@@ -190,23 +170,22 @@ export function App() {
   );
 
   const handleBackToLive = useCallback(() => {
-    // Immediately cancel any pending past session fetch so it cannot settle
-    // into state after the user has navigated back to the live view.
     pastFetchAbortRef.current?.abort();
     pastFetchAbortRef.current = null;
     pastFetchSeqRef.current += 1;
-
     setPastSessionId(null);
     setPastSessionTitle(null);
     setPastEntries([]);
     setLoadingPast(false);
     setErrorPast(null);
+    setSidebarOpen(false);
   }, []);
 
   const handleRetryPastSession = useCallback(() => {
     if (!pastSessionId) return;
     void handleSelectSession(pastSessionId, pastSessionTitle ?? undefined);
   }, [pastSessionId, pastSessionTitle, handleSelectSession]);
+
   // Resume a past session: make it the active OMP session via switchSession,
   // then drop back to the live view so the composer works immediately.
   const [resumingPast, setResumingPast] = useState(false);
@@ -256,47 +235,124 @@ export function App() {
   const hasAgents = collab.agents.length > 0;
   const isStreaming = collab.state?.isStreaming === true;
   const queuedMessages = collab.state?.queuedMessageCount ?? 0;
+  const viewedTitle = pastSessionId ? pastSessionTitle || pastSessionId : currentTitle;
+  const connectionLabel = loading && !connected ? "Discovering" : connected ? "Connected" : "Waiting for OMP";
+
+  // Auto-open the agents panel when agents first appear, unless the user has
+  // already toggled it by hand.
+  useEffect(() => {
+    if (hasAgents && !agentsTouchedRef.current) setAgentsOpen(true);
+    if (!hasAgents) setAgentsOpen(false);
+  }, [hasAgents]);
+
+  // Escape dismisses whichever overlay drawer is open.
+  useEffect(() => {
+    if (!sidebarOpen && !agentsOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setSidebarOpen(false);
+      setAgentsOpen(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [sidebarOpen, agentsOpen]);
 
   return (
-    <div className="app-shell">
-      <aside className="utility-rail">
-        <div className="rail-top"><OmpMark /><div className="rail-button active" aria-label="Session"><Terminal size={18} /></div></div>
-      </aside>
+    <div className={`app-shell${sidebarOpen ? " sidebar-is-open" : ""}${agentsOpen ? " agents-is-open" : ""}`}>
+      <div className="sidebar-scrim" aria-hidden="true" onClick={() => setSidebarOpen(false)} />
 
-      <aside className="session-sidebar">
-        <div className="workspace-switcher"><span className="section-label">Live workspace</span><strong>{currentWorkspace}</strong></div>
-        <div className="current-session-block">
-          <span className="session-group-label">Current session</span>
-          <SessionRow title={currentTitle} subtitle={currentSubtitle} time={loading ? "…" : connected ? "Now" : "Offline"} />
+      <aside className="session-sidebar" aria-label="Session navigation">
+        <div className="sidebar-heading">
+          <OmpMark />
+          <div className="sidebar-heading-copy">
+            <span className="sidebar-heading-label">Workspace</span>
+            <strong title={host?.cwd || currentWorkspace}>{currentWorkspace}</strong>
+          </div>
+          <button
+            className="icon-button sidebar-close"
+            type="button"
+            onClick={() => setSidebarOpen(false)}
+            aria-label="Close session navigation"
+          >
+            <X size={18} aria-hidden="true" />
+          </button>
         </div>
-        <SessionList
-          token={authToken}
-          onSelectSession={handleSelectSession}
-          selectedFileId={pastSessionId}
-          onBackToLive={handleBackToLive}
-        />
-        {connected && isStreaming && <div className="subagent-note">Streaming · {queuedMessages} queued message{queuedMessages === 1 ? "" : "s"}</div>}
-        <div className="session-sidebar-footer"><span className={`connection-dot${connected ? " connected" : ""}`} /><span>{connected ? "OMP connected" : "Waiting for OMP"}</span></div>
+
+        <Slot name="sidebar.top" />
+        <nav className="session-nav" aria-label="Current session">
+          <SessionList
+            token={authToken}
+            onSelectSession={handleSelectSession}
+            selectedFileId={pastSessionId}
+            onBackToLive={handleBackToLive}
+            liveTitle={currentTitle}
+            liveSubtitle={currentSubtitle}
+            liveActive={!pastSessionId}
+            connectionState={connected ? "connected" : "waiting"}
+          />
+        </nav>
+        <Slot name="sidebar.bottom" />
       </aside>
 
       <main className="main-column">
         <header className="topbar">
-          <div className="breadcrumbs">
-            <span>{currentWorkspace}</span>
-            <strong>{pastSessionId ? (pastSessionTitle || pastSessionId) : currentTitle}</strong>
+          <button
+            className="icon-button nav-trigger"
+            type="button"
+            onClick={() => setSidebarOpen(true)}
+            aria-label="Open session navigation"
+          >
+            <Menu size={18} aria-hidden="true" />
+          </button>
+          <div className="session-heading">
+            <h1 title={viewedTitle}>{viewedTitle}</h1>
+            <span className={`connection-label${connected ? " is-connected" : ""}`}>{connectionLabel}</span>
           </div>
-          <span className="model-button">{currentModel}</span>
+          <div className="topbar-actions">
+            <span className="model-chip" title={currentModel}>
+              {currentModel}
+            </span>
+            <CollabControls
+              status={collab.status}
+              readOnly={collab.readOnly}
+              error={collab.error}
+              sessionReady={connected}
+              onReconnect={collab.reconnect}
+              onDisconnect={collab.disconnect}
+            />
+            {hasAgents ? (
+              <button
+                className="icon-button agents-trigger"
+                type="button"
+                onClick={() => {
+                  agentsTouchedRef.current = true;
+                  setAgentsOpen((open) => !open);
+                }}
+                aria-expanded={agentsOpen}
+                aria-controls="agents-panel"
+                aria-label={agentsOpen ? "Hide agents" : "Show agents"}
+                title={agentsOpen ? "Hide agents" : "Show agents"}
+              >
+                {agentsOpen ? (
+                  <PanelRightClose size={18} aria-hidden="true" />
+                ) : (
+                  <PanelRightOpen size={18} aria-hidden="true" />
+                )}
+              </button>
+            ) : null}
+          </div>
         </header>
+
         <section className="conversation" aria-label={pastSessionId ? "Past session transcript" : "Live session"}>
           <Slot name="chat.before" />
           {pastSessionId ? (
             <div className="past-session-container">
               <div className="past-session-header">
                 <div className="past-session-heading">
-                  <span className="past-session-kicker">Viewed past session</span>
-                  <h1 className="past-session-title">{pastSessionTitle || pastSessionId}</h1>
+                  <span className="past-session-kicker">Read-only</span>
+                  <h2 className="past-session-title">{pastSessionTitle || pastSessionId}</h2>
                 </div>
-                <div className="past-session-header-actions">
+                <div className="past-session-actions">
                   <button
                     className="past-session-resume"
                     type="button"
@@ -307,15 +363,15 @@ export function App() {
                     {resumingPast ? "Resuming…" : "Resume in OMP"}
                   </button>
                   <button className="past-session-back" type="button" onClick={handleBackToLive}>
-                    ← Back to live
+                    Back to live
                   </button>
-                  {resumeError && (
-                    <span className="past-session-resume-error" role="status">
-                      {resumeError}
-                    </span>
-                  )}
                 </div>
               </div>
+              {resumeError ? (
+                <p className="past-session-resume-error" role="status">
+                  {resumeError}
+                </p>
+              ) : null}
               {loadingPast ? (
                 <div className="past-session-state" role="status" aria-live="polite" aria-busy="true">
                   <span className="past-session-spinner" aria-hidden="true" />
@@ -329,7 +385,11 @@ export function App() {
                     <button className="past-session-retry" type="button" onClick={handleRetryPastSession}>
                       Try again
                     </button>
-                    <button className="past-session-back past-session-back-secondary" type="button" onClick={handleBackToLive}>
+                    <button
+                      className="past-session-back past-session-back-secondary"
+                      type="button"
+                      onClick={handleBackToLive}
+                    >
                       Back to live session
                     </button>
                   </div>
@@ -338,56 +398,82 @@ export function App() {
                 <FullTranscriptViewer entries={pastEntries} />
               )}
             </div>
+          ) : connected ? (
+            <>
+              <CollabTranscript entries={collab.entries} events={collab.events} status={collab.status} />
+              {isStreaming ? (
+                <p className="streaming-note" role="status" aria-live="polite">
+                  Streaming{queuedMessages > 0 ? ` · ${queuedMessages} queued` : ""}
+                </p>
+              ) : null}
+            </>
           ) : (
-            connected ? (
-              <>
-                <CollabControls status={collab.status} readOnly={collab.readOnly} error={collab.error} onReconnect={collab.reconnect} onDisconnect={collab.disconnect} />
-                <CollabTranscript entries={collab.entries} events={collab.events} status={collab.status} />
-              </>
-            ) : (
-              <div className="transport-state">
-                <OmpMark />
-                <div className="transport-copy">
-                  <span className="transport-kicker">{loading ? "DISCOVERING SESSION" : "WAITING FOR OMP"}</span>
-                  <h1>{loading ? "Finding your OMP session..." : "No active OMP session"}</h1>
-                  <p>{loading ? currentSubtitle : <>Run <code>/webui</code> in OMP to open this workspace.</>}</p>
-                </div>
+            <div className="transport-state">
+              <OmpMark />
+              <div className="transport-copy">
+                <span className="transport-kicker">{loading ? "Discovering session" : "Waiting for OMP"}</span>
+                <h2>{loading ? "Finding your OMP session…" : "No active OMP session"}</h2>
+                <p>{loading ? currentSubtitle : <>Run <code>/webui</code> in OMP to open this workspace.</>}</p>
               </div>
-            )
+            </div>
           )}
           <Slot name="chat.after" />
-          {!pastSessionId && (
-            <CollabComposer disabled={!connected || !collab.ready || collab.readOnly || collab.status !== "live"} placeholder={connected ? "Message OMP..." : "Connect an OMP session to start chatting"} isStreaming={isStreaming} onSend={collab.sendPrompt} onAbort={collab.sendAbort} />
-          )}
+          {!pastSessionId ? (
+            <CollabComposer
+              disabled={!connected || !collab.ready || collab.readOnly || collab.status !== "live"}
+              placeholder={connected ? "Message OMP..." : "Connect an OMP session to start chatting"}
+              isStreaming={isStreaming}
+              onSend={collab.sendPrompt}
+              onAbort={collab.sendAbort}
+            />
+          ) : null}
         </section>
       </main>
 
-      <aside className="subagents-panel">
-        <div className="subagents-header"><div><h2>Agents</h2><p>{hasAgents ? `${collab.agents.length} active agent${collab.agents.length === 1 ? "" : "s"}` : "No active agents"}</p></div></div>
-        {hasAgents ? (
+      {hasAgents ? (
+        <aside id="agents-panel" className="subagents-panel" aria-label="Agents" inert={!agentsOpen}>
+          <div className="subagents-header">
+            <div>
+              <h2>Agents</h2>
+              <p>{`${collab.agents.length} active agent${collab.agents.length === 1 ? "" : "s"}`}</p>
+            </div>
+            <button
+              className="icon-button agents-close"
+              type="button"
+              onClick={() => {
+                agentsTouchedRef.current = true;
+                setAgentsOpen(false);
+              }}
+              aria-label="Hide agents"
+            >
+              <X size={18} aria-hidden="true" />
+            </button>
+          </div>
           <div className="agents-list">
             {collab.agents.map((agent) => (
-              <div key={agent.id} className="agent-card">
+              <article key={agent.id} className="agent-card">
                 <div className="agent-main">
-                  <div className="agent-heading"><strong>{agent.displayName}</strong>{agent.kind === "sub" && <span className="agent-parent">subagent</span>}</div>
-                  <div className={`agent-status${agent.status === "running" ? " live" : ""}`}><i aria-hidden="true" />{agent.status}</div>
+                  <div className="agent-heading">
+                    <strong>{agent.displayName}</strong>
+                    {agent.kind === "sub" ? <span className="agent-parent">subagent</span> : null}
+                  </div>
+                  <div className={`agent-status${agent.status === "running" ? " live" : ""}`}>
+                    <i aria-hidden="true" />
+                    {agent.status}
+                  </div>
                 </div>
                 <div className="agent-meta">
-                  {agent.lastActivity && <small>Last activity {new Date(agent.lastActivity).toLocaleTimeString()}</small>}
-                  {agent.hasSessionFile && <small>Session file available</small>}
+                  {agent.lastActivity ? (
+                    <small>Last activity {new Date(agent.lastActivity).toLocaleTimeString()}</small>
+                  ) : null}
+                  {agent.hasSessionFile ? <small>Session file available</small> : null}
                 </div>
-              </div>
+              </article>
             ))}
           </div>
-        ) : (
-          <div className="subagent-empty">
-            <Users size={19} />
-            <strong>No agents yet</strong>
-            <p>OMP subagents appear here while they run.</p>
-          </div>
-        )}
-        <Slot name="agent.panel" />
-      </aside>
+          <Slot name="agent.panel" />
+        </aside>
+      ) : null}
     </div>
   );
 }
