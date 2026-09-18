@@ -1,4 +1,4 @@
-import { Send, Square } from "lucide-react";
+import { Send, Sparkles, Square } from "lucide-react";
 import { useId, useState, type FormEvent, type KeyboardEvent } from "react";
 import type { CollabComposerProps } from "./collabTypes";
 
@@ -58,6 +58,10 @@ export function CollabComposer({
   return (
     <div className="composer-dock">
       <form className="composer" onSubmit={handleSubmit} aria-describedby={feedbackId}>
+        <div className="composer-eyebrow" aria-hidden="true">
+          <Sparkles size={13} />
+          <span>Ask OMP</span>
+        </div>
         <label className="visually-hidden" htmlFor={textareaId}>
           Message to OMP
         </label>

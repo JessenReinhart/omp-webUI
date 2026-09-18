@@ -171,6 +171,9 @@ export interface CollabTranscriptProps {
   entries: SessionEntry[];
   events: AgentEvent[];
   status: CollabStatus;
+  welcomeTitle?: string;
+  isStreaming?: boolean;
+  queuedMessages?: number;
   scrollRef?: React.Ref<HTMLDivElement>;
 }
 
@@ -189,4 +192,3 @@ export interface CollabControlsProps {
   onReconnect(): void;
   onDisconnect(): void;
 }
-

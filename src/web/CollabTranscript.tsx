@@ -20,7 +20,15 @@ function entryKey(entry: SessionEntry, index: number): string {
   return isRecord(entry) ? (asText(entry.id) ?? `entry-${index}`) : `entry-${index}`;
 }
 
-export function CollabTranscript({ entries, events, status, scrollRef }: CollabTranscriptProps) {
+export function CollabTranscript({
+  entries,
+  events,
+  status,
+  welcomeTitle,
+  isStreaming = false,
+  queuedMessages = 0,
+  scrollRef,
+}: CollabTranscriptProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const stickyRef = useRef(true);
   const seenSignatureRef = useRef<string | null>(null);
@@ -40,8 +48,9 @@ export function CollabTranscript({ entries, events, status, scrollRef }: CollabT
         latestMessage ? messageIdentity(latestMessage) : "",
         tools.map((tool) => `${tool.id}:${tool.status}:${tool.detail ?? ""}`).join("|"),
         latestNotices.map((notice) => `${notice.level}:${notice.message}`).join("|"),
+        isStreaming ? `streaming:${queuedMessages}` : "settled",
       ].join(";"),
-    [safeEntries, latestMessage, tools, latestNotices]
+    [safeEntries, latestMessage, tools, latestNotices, isStreaming, queuedMessages]
   );
 
   useEffect(() => {
@@ -105,7 +114,26 @@ export function CollabTranscript({ entries, events, status, scrollRef }: CollabT
       aria-relevant="additions text"
     >
       {stateMessage && !isEmpty ? <p className="collab-connection-state">{stateMessage}</p> : null}
-      {isEmpty ? <p className="collab-empty-state">{stateMessage ?? "No transcript yet."}</p> : null}
+      {isEmpty ? (
+        <div className="welcome-state">
+          <div className="welcome-orb" aria-hidden="true">
+            <span />
+          </div>
+          <p className="welcome-kicker">Your local AI workspace</p>
+          <h2>
+            Let&apos;s make something <em>remarkable</em>
+            {welcomeTitle ? <> in {welcomeTitle}</> : null}.
+          </h2>
+          <p className="welcome-copy">{stateMessage ?? "Ask a question, shape an idea, or start building."}</p>
+          <div className="welcome-capabilities" aria-label="Workspace capabilities">
+            <span>Think</span>
+            <i aria-hidden="true" />
+            <span>Build</span>
+            <i aria-hidden="true" />
+            <span>Iterate</span>
+          </div>
+        </div>
+      ) : null}
       {safeEntries.map((entry, index) => (
         <TranscriptEntry key={entryKey(entry, index)} entry={entry} />
       ))}
@@ -121,6 +149,29 @@ export function CollabTranscript({ entries, events, status, scrollRef }: CollabT
           {notice.message}
         </p>
       ))}
+      {isStreaming ? (
+        <div className="collab-working" role="status" aria-live="polite">
+          <span className="working-mark" aria-hidden="true">
+            <i />
+            <i />
+            <i />
+            <i />
+          </span>
+          <span className="working-copy">
+            <strong>OMP is working</strong>
+            <small>
+              {queuedMessages > 0
+                ? `${queuedMessages} ${queuedMessages === 1 ? "message" : "messages"} queued`
+                : "Thinking through your request"}
+            </small>
+          </span>
+          <span className="working-ellipsis" aria-hidden="true">
+            <i />
+            <i />
+            <i />
+          </span>
+        </div>
+      ) : null}
       {showJump ? (
         <button
           type="button"
