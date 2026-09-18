@@ -66,6 +66,7 @@ function MessageContent({ message }: { message: WireMessage }) {
 
   if (message.role === "toolResult") {
     const text = contentText(message.content);
+    const preview = text.length > 260 ? `${text.slice(0, 260).trimEnd()}…` : text;
     const toolLabel = asText(message.toolName) ?? "Tool";
     const isError = message.isError === true;
     return (
@@ -78,7 +79,7 @@ function MessageContent({ message }: { message: WireMessage }) {
           </summary>
           <pre className="transcript-pre">{safeStringify(message.content)}</pre>
         </details>
-        {text ? <p className="collab-muted">{text}</p> : null}
+        {preview ? <p className="collab-muted tool-result-preview">{preview}</p> : null}
       </div>
     );
   }
@@ -102,6 +103,17 @@ export function Message({ message, live = false }: { message: WireMessage; live?
       </header>
       <MessageContent message={message} />
     </article>
+  );
+}
+
+function SystemDetail({ label, summary }: { label: string; summary?: string | null }) {
+  if (!summary) return <p className="collab-system-event">{label}</p>;
+
+  return (
+    <details className="collab-system-detail">
+      <summary>{label}</summary>
+      <p>{summary}</p>
+    </details>
   );
 }
 
@@ -132,11 +144,11 @@ export function TranscriptEntry({ entry }: { entry: SessionEntry }) {
     }
     case "compaction": {
       const summary = asText(entry.shortSummary) ?? asText(entry.summary);
-      return <p className="collab-system-event">Context compacted{summary ? ` · ${summary}` : ""}</p>;
+      return <SystemDetail label="Context compacted" summary={summary} />;
     }
     case "branch_summary": {
       const summary = asText(entry.summary);
-      return <p className="collab-system-event">Branch summary{summary ? ` · ${summary}` : ""}</p>;
+      return <SystemDetail label="Branch summary" summary={summary} />;
     }
     case "model_change":
       return <p className="collab-system-event">Model · {asText(entry.model) ?? "unknown"}</p>;

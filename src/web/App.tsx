@@ -400,12 +400,14 @@ export function App() {
             </div>
           ) : connected ? (
             <>
-              <CollabTranscript entries={collab.entries} events={collab.events} status={collab.status} />
-              {isStreaming ? (
-                <p className="streaming-note" role="status" aria-live="polite">
-                  Streaming{queuedMessages > 0 ? ` · ${queuedMessages} queued` : ""}
-                </p>
-              ) : null}
+              <CollabTranscript
+                entries={collab.entries}
+                events={collab.events}
+                status={collab.status}
+                welcomeTitle={currentWorkspace}
+                isStreaming={isStreaming}
+                queuedMessages={queuedMessages}
+              />
             </>
           ) : (
             <div className="transport-state">
