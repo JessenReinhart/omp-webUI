@@ -1,3 +1,24 @@
+import {
+  BrainCircuit,
+  CheckCircle2,
+  ChevronDown,
+  Code,
+  FilePlus2,
+  FileSearch,
+  FileText,
+  Globe,
+  ListChecks,
+  MessagesSquare,
+  PencilLine,
+  Search,
+  Sparkles,
+  SquareTerminal,
+  UserCheck,
+  Wrench,
+  XCircle,
+} from "lucide-react";
+import type { LucideIcon } from "lucide-react";
+
 import type { SessionEntry, WireMessage } from "./collabTypes";
 import {
   asText,
@@ -8,21 +29,87 @@ import {
   isWireMessage,
   safeStringify,
 } from "./transcript-model";
+import { MarkdownMessage } from "./MarkdownMessage";
+
+export type ActionState = "running" | "complete" | "error" | "info";
+
+const TOOL_ICONS: Record<string, LucideIcon> = {
+  bash: SquareTerminal,
+  edit: PencilLine,
+  eval: Code,
+  glob: FileSearch,
+  grep: Search,
+  hub: MessagesSquare,
+  learn: Sparkles,
+  manage_skill: Sparkles,
+  read: FileText,
+  task: UserCheck,
+  todo: ListChecks,
+  web_search: Globe,
+  write: FilePlus2,
+};
+
+export function toolIcon(name: string): LucideIcon {
+  return TOOL_ICONS[name.toLowerCase()] ?? Wrench;
+}
+
+interface ActionRowProps {
+  className?: string;
+  icon: LucideIcon;
+  label: string;
+  state: ActionState;
+  stateLabel: string;
+  children?: React.ReactNode;
+}
+
+/**
+ * Collapsed disclosure for agent-internal activity: icon plus action only.
+ * Payloads stay inside the details body so nothing leaks before expansion.
+ * Rows without a payload render as a static (non-clickable) line.
+ */
+export function ActionRow({ className = "", icon: Icon, label, state, stateLabel, children }: ActionRowProps) {
+  const head = (
+    <>
+      <span className={`transcript-action-icon is-${state}`} aria-hidden="true">
+        <Icon size={15} strokeWidth={2.1} />
+      </span>
+      <span className="transcript-action-label">{label}</span>
+      <span className="transcript-action-state">{stateLabel}</span>
+    </>
+  );
+
+  const rowClass = `transcript-action-row is-${state} ${className}`.trim();
+
+  if (!children) {
+    return (
+      <div className={`${rowClass} is-static`}>
+        <span className="transcript-action-summary">{head}</span>
+      </div>
+    );
+  }
+
+  return (
+    <details className={rowClass}>
+      <summary className="transcript-action-summary">
+        {head}
+        <ChevronDown className="transcript-action-chevron" size={14} aria-hidden="true" />
+      </summary>
+      <div className="transcript-action-detail">{children}</div>
+    </details>
+  );
+}
 
 function ToolBlock({ block }: { block: Record<string, unknown> }) {
   const name = asText(block.name) ?? "tool";
   const intent = asText(block.intent);
   const argsJson = safeStringify(block.arguments ?? block.input ?? null);
+  const Icon = toolIcon(name);
+  const label = intent ? `Calling ${name}: ${intent}` : `Calling ${name}`;
 
   return (
-    <details className="transcript-tool-card">
-      <summary className="transcript-tool-summary">
-        <span className="transcript-tool-name">{name}</span>
-        {intent ? <span className="transcript-tool-intent">{intent}</span> : null}
-        <span className="transcript-tool-kind">tool call</span>
-      </summary>
+    <ActionRow icon={Icon} label={label} state="info" stateLabel="Tool call">
       <pre className="transcript-pre">{argsJson}</pre>
-    </details>
+    </ActionRow>
   );
 }
 
@@ -36,19 +123,20 @@ function MessageContent({ message }: { message: WireMessage }) {
           switch (block.type) {
             case "text": {
               const text = asText(block.text);
-              return text ? (
-                <p key={index} style={{ overflowWrap: "anywhere", whiteSpace: "pre-wrap" }}>
-                  {text}
-                </p>
-              ) : null;
+              return text ? <MarkdownMessage key={index} text={text} /> : null;
             }
             case "thinking": {
               const text = asText(block.thinking);
               return text ? (
-                <details key={index} className="collab-thinking">
-                  <summary>Thinking</summary>
-                  <p>{text}</p>
-                </details>
+                <ActionRow
+                  key={index}
+                  stateLabel="Reasoning"
+                  icon={BrainCircuit}
+                  label="Thinking"
+                  state="info"
+                >
+                  <p className="transcript-thinking-text">{text}</p>
+                </ActionRow>
               ) : null;
             }
             case "redactedThinking":
@@ -65,27 +153,42 @@ function MessageContent({ message }: { message: WireMessage }) {
   }
 
   if (message.role === "toolResult") {
-    const text = contentText(message.content);
-    const preview = text.length > 260 ? `${text.slice(0, 260).trimEnd()}…` : text;
     const toolLabel = asText(message.toolName) ?? "Tool";
     const isError = message.isError === true;
     return (
-      <div className={`transcript-tool-result${isError ? " transcript-tool-error" : ""}`}>
-        <details>
-          <summary className="transcript-tool-summary">
-            <span className="transcript-tool-name">{toolLabel}</span>
-            <span className="transcript-tool-intent">{isError ? "failed" : "completed"}</span>
-            {isError ? <span className="transcript-error-badge">Error</span> : null}
-          </summary>
-          <pre className="transcript-pre">{safeStringify(message.content)}</pre>
-        </details>
-        {preview ? <p className="collab-muted tool-result-preview">{preview}</p> : null}
-      </div>
+      <ActionRow
+        stateLabel={isError ? "Failed" : "Completed"}
+        icon={isError ? XCircle : CheckCircle2}
+        label={`${toolLabel} ${isError ? "failed" : "completed"}`}
+        state={isError ? "error" : "complete"}
+      >
+        <pre className="transcript-pre">{safeStringify(message.content)}</pre>
+      </ActionRow>
     );
   }
 
-  const text = contentText(message.content);
-  return <p>{text || "(empty message)"}</p>;
+  const blocks: Record<string, unknown>[] = Array.isArray(message.content)
+    ? message.content.flatMap((block) => isRecord(block) ? [block] : [])
+    : [];
+  const images = blocks.flatMap((block) => {
+    if (block.type !== "image" || typeof block.data !== "string" || typeof block.mimeType !== "string") return [];
+    if (!/^image\/(png|jpeg|gif|webp)$/.test(block.mimeType) || !/^[A-Za-z0-9+/]*={0,2}$/.test(block.data)) return [];
+    return [{ src: `data:${block.mimeType};base64,${block.data}` }];
+  });
+  const text = typeof message.content === "string"
+    ? message.content
+    : blocks.flatMap((block) => block.type === "text" && typeof block.text === "string" ? [block.text] : []).join("\n");
+  return (
+    <>
+      {text ? <p>{text}</p> : null}
+      {images.length > 0 ? (
+        <div className="transcript-image-grid">
+          {images.map((image, index) => <img key={index} src={image.src} alt={`Pasted attachment ${index + 1}`} />)}
+        </div>
+      ) : null}
+      {!text && images.length === 0 ? <p>{contentText(message.content) || "(empty message)"}</p> : null}
+    </>
+  );
 }
 
 export function Message({ message, live = false }: { message: WireMessage; live?: boolean }) {
