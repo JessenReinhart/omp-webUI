@@ -11,7 +11,7 @@ import {
 } from "@oh-my-pi/pi-coding-agent";
 import { expandSlashCommand } from "@oh-my-pi/pi-coding-agent/extensibility/slash-commands";
 import { computeDefaultSessionDir } from "@oh-my-pi/pi-coding-agent/session/session-paths";
-import { broadcastSnapshot, getEventRing, getWebUiRuntime, subscribeStream } from "../extension/index";
+import { broadcastSnapshot, getEventRing, getWebUiRuntime, isCursorReplayable, subscribeStream } from "../extension/index";
 
 const HOST = "127.0.0.1";
 const FIRST_PORT = 4380;
@@ -409,7 +409,8 @@ async function handler(request: Request, token: string): Promise<Response> {
 
     const cursorParam = url.searchParams.get("cursor");
     const cursor = cursorParam ? Number.parseInt(cursorParam, 10) : undefined;
-    const missed = getEventRing(cursor);
+    const cursorStale = typeof cursor === "number" && !Number.isNaN(cursor) && !isCursorReplayable(cursor);
+    const missed = cursorStale ? [] : getEventRing(cursor);
 
     let cleanupStream: (() => void) | null = null;
     const stream = new ReadableStream({
@@ -423,25 +424,13 @@ async function handler(request: Request, token: string): Promise<Response> {
           }
         };
 
-        // Clients without a live cursor get a full snapshot. cursor=0 counts as
-        // fresh: lastSeqRef starts at 0 on first connect. Broadcasting gets a real
-        // seq and inserts it into the ring (with event-ring buffering).
-        if (!cursor || Number.isNaN(cursor)) {
-          const snapshot = broadcastSnapshot();
-          send(snapshot);
+        if (!cursor || Number.isNaN(cursor) || cursorStale) {
+          send(broadcastSnapshot());
         }
 
-        // Send missed buffered frames
-        for (const frame of missed) {
-          send(frame);
-        }
+        for (const frame of missed) send(frame);
 
-        // Subscribe to future frames
-        const unsubscribe = subscribeStream((frame) => {
-          send(frame);
-        });
-
-        // Keepalive ping
+        const unsubscribe = subscribeStream((frame) => send(frame));
         const pingTimer = setInterval(() => {
           try {
             controller.enqueue(encoder.encode(": ping\n\n"));

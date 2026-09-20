@@ -73,6 +73,13 @@ export function getEventRing(cursor?: number): LocalFrame[] {
   return eventRing.filter((frame) => frame.seq > cursor);
 }
 
+export function isCursorReplayable(cursor: number): boolean {
+  if (eventRing.length === 0) return false;
+  const oldestSeq = eventRing[0].seq;
+  const newestSeq = eventRing[eventRing.length - 1].seq;
+  return cursor >= oldestSeq && cursor <= newestSeq;
+}
+
 export function broadcast(frame: LocalFrameBase): LocalFrame {
   globalSeq += 1;
   const fullFrame: LocalFrame = { seq: globalSeq, ...frame };
