@@ -237,10 +237,16 @@ export function useLocalSession(): UseCollabSessionReturn {
       if (generation !== generationRef.current || stoppedRef.current) return;
       source.close();
       sourceRef.current = null;
+
+      if (generation !== generationRef.current || stoppedRef.current) return;
       resetSession();
       setReady(false);
       setStatus("reconnecting");
-      setError("Connection to local session lost");
+      if (attemptRef.current > 2) {
+        setError("Connection lost — token may have rotated. Run /webui url for new link.");
+      } else {
+        setError("Connection to local session lost");
+      }
       const delay = Math.min(100 * 2 ** attemptRef.current++, MAX_BACKOFF_MS) * (0.9 + Math.random() * 0.2);
       timerRef.current = window.setTimeout(() => {
         timerRef.current = null;
