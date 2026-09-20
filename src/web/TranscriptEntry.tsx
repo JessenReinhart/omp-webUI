@@ -230,8 +230,13 @@ export function TranscriptEntry({ entry }: { entry: SessionEntry }) {
     }
     case "custom_message": {
       if (!entry.display) return null;
+      const rawCustomType = asText(entry.customType);
+      // Advisor notes surface in the dedicated Advisor panel (derived from
+      // details.notes); their raw model-facing <advisory ...> content must not
+      // also leak into the main transcript.
+      if (rawCustomType && rawCustomType.toLowerCase().includes("advisor")) return null;
       const text = contentText(entry.content);
-      const customType = asText(entry.customType) ?? "Custom message";
+      const customType = rawCustomType ?? "Custom message";
       let label = customType;
       if (customType === "collab-prompt") {
         const details = isRecord(entry.details) ? entry.details : null;

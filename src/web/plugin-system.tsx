@@ -11,7 +11,9 @@ export type UiSlot =
   | "agent.actions"
   | "rightPanel"
   | "bottomPanel"
-  | "statusBar";
+  | "statusBar"
+  | "advisor.panel"
+  | "todo.panel";
 
 export interface UiContribution {
   id: string;

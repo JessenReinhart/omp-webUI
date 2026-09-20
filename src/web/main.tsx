@@ -4,6 +4,7 @@ import { App } from "./App";
 import { BootSequence } from "./BootSequence";
 import "./styles.css";
 import "./awwwards.css";
+import "./plugin-registrations";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

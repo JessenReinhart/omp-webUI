@@ -5,7 +5,9 @@ import { CollabControls } from "./CollabControls";
 import { CollabTranscript } from "./CollabTranscript";
 import { FullTranscriptViewer } from "./FullTranscriptViewer";
 import { SessionList } from "./SessionList";
-import type { SessionEntry } from "./collabTypes";
+import { isRecord, type SessionEntry, type WorkspaceAttachment } from "./collabTypes";
+import { DEFAULT_COMMANDS, parseCommandCatalog, type CommandCatalog, type CommandOption } from "./commandTypes";
+import { FeatureProvider, useFeatureSelection } from "./featureStore";
 import { Slot } from "./plugin-system";
 import { useLocalSession } from "./useLocalSession";
 
@@ -72,6 +74,7 @@ export function App() {
   const [sessionNonce, setSessionNonce] = useState(0);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [agentsOpen, setAgentsOpen] = useState(false);
+  const [commandCatalog, setCommandCatalog] = useState<CommandCatalog | null>(null);
   // Once the user explicitly opens/closes the agents panel, stop auto-opening it.
   const agentsTouchedRef = useRef(false);
 
@@ -102,6 +105,23 @@ export function App() {
       window.clearInterval(intervalId);
     };
   }, [authToken, sessionNonce]);
+
+  useEffect(() => {
+    if (!session?.connected) {
+      setCommandCatalog(null);
+      return;
+    }
+    const controller = new AbortController();
+    void fetch(`/api/commands?token=${encodeURIComponent(authToken)}`, { signal: controller.signal })
+      .then(async (response) => response.ok ? parseCommandCatalog(await response.json()) : null)
+      .then((catalog) => {
+        if (!controller.signal.aborted) setCommandCatalog(catalog);
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setCommandCatalog(null);
+      });
+    return () => controller.abort();
+  }, [authToken, session?.connected, sessionNonce]);
 
   // Past session state
   const [pastSessionId, setPastSessionId] = useState<string | null>(null);
@@ -225,6 +245,7 @@ export function App() {
 
   const connected = Boolean(session?.connected);
   const collab = useLocalSession();
+  const features = useFeatureSelection(collab.entries, collab.events, collab.agents);
   const host = session?.host;
   const currentTitle = host?.sessionName || "Current OMP session";
   const currentWorkspace = workspaceName(host?.cwd);
@@ -232,11 +253,60 @@ export function App() {
   const currentSubtitle = connected
     ? host?.cwd || "Connected to running OMP process"
     : session?.error || session?.reason || "Waiting for OMP session";
-  const hasAgents = collab.agents.length > 0;
+  // The host snapshot only carries live OMP agents; derived runs (task/subagent
+  // tool calls in this transcript) also justify opening the drawer.
+  const hasAgents = collab.agents.length > 0 || features.subagents.length > 0;
+  const agentCount = collab.agents.length > 0 ? collab.agents.length : features.subagents.length;
   const isStreaming = collab.state?.isStreaming === true;
   const queuedMessages = collab.state?.queuedMessageCount ?? 0;
   const viewedTitle = pastSessionId ? pastSessionTitle || pastSessionId : currentTitle;
   const connectionLabel = loading && !connected ? "Discovering" : connected ? "Connected" : "Waiting for OMP";
+  const commandOptions = useMemo<CommandOption[]>(() => {
+    const models: CommandOption[] = (commandCatalog?.models ?? []).map((model) => ({
+      name: model.name,
+      value: `/model ${model.id}`,
+      description: model.id,
+      source: "model",
+      active: model.active,
+    }));
+    const thinking: CommandOption[] = (commandCatalog?.thinkingLevels ?? []).map((level) => ({
+      name: level,
+      value: `/thinking ${level}`,
+      description: `${level === commandCatalog?.currentThinking ? "Current · " : ""}Set reasoning effort to ${level}`,
+      source: "thinking",
+      active: level === commandCatalog?.currentThinking,
+    }));
+    return [...(commandCatalog?.commands ?? DEFAULT_COMMANDS), ...models, ...thinking];
+  }, [commandCatalog]);
+
+  const handleCommand = useCallback(async (text: string): Promise<string> => {
+    const response = await fetch(`/api/commands?token=${encodeURIComponent(authToken)}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
+    });
+    const body = (await response.json().catch(() => null)) as unknown;
+    if (!response.ok || typeof body !== "object" || body === null) {
+      throw new Error("Command could not be completed.");
+    }
+    const result = body as { error?: unknown; message?: unknown; refresh?: unknown };
+    if (typeof result.error === "string") throw new Error(result.error);
+    if (result.refresh === true) setSessionNonce((nonce) => nonce + 1);
+    return typeof result.message === "string" ? result.message : "Command completed.";
+  }, [authToken]);
+
+  const handleSearchFiles = useCallback(async (query: string): Promise<WorkspaceAttachment[]> => {
+    const response = await fetch(`/api/files?token=${encodeURIComponent(authToken)}&query=${encodeURIComponent(query)}`);
+    const body = (await response.json().catch(() => null)) as unknown;
+    if (!response.ok || !isRecord(body) || !Array.isArray(body.files)) return [];
+    return body.files.flatMap((file) => {
+      if (!isRecord(file)
+        || typeof file.path !== "string"
+        || typeof file.name !== "string"
+        || (file.kind !== "image" && file.kind !== "file")) return [];
+      return [{ path: file.path, name: file.name, kind: file.kind }];
+    });
+  }, [authToken]);
 
   // Auto-open the agents panel when agents first appear, unless the user has
   // already toggled it by hand.
@@ -258,6 +328,7 @@ export function App() {
   }, [sidebarOpen, agentsOpen]);
 
   return (
+    <FeatureProvider selection={features}>
     <div className={`app-shell${sidebarOpen ? " sidebar-is-open" : ""}${agentsOpen ? " agents-is-open" : ""}`}>
       <div className="sidebar-scrim" aria-hidden="true" onClick={() => setSidebarOpen(false)} />
 
@@ -425,7 +496,10 @@ export function App() {
               disabled={!connected || !collab.ready || collab.readOnly || collab.status !== "live"}
               placeholder={connected ? "Message OMP..." : "Connect an OMP session to start chatting"}
               isStreaming={isStreaming}
+              commands={commandOptions}
               onSend={collab.sendPrompt}
+              onCommand={handleCommand}
+              onSearchFiles={handleSearchFiles}
               onAbort={collab.sendAbort}
             />
           ) : null}
@@ -437,7 +511,7 @@ export function App() {
           <div className="subagents-header">
             <div>
               <h2>Agents</h2>
-              <p>{`${collab.agents.length} active agent${collab.agents.length === 1 ? "" : "s"}`}</p>
+              <p>{`${agentCount} active agent${agentCount === 1 ? "" : "s"}`}</p>
             </div>
             <button
               className="icon-button agents-close"
@@ -477,5 +551,6 @@ export function App() {
         </aside>
       ) : null}
     </div>
+    </FeatureProvider>
   );
 }

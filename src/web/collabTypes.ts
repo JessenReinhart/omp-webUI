@@ -161,11 +161,18 @@ export interface CollabSession {
 }
 
 export interface UseCollabSessionReturn extends CollabSession {
-  sendPrompt(text: string): Promise<void>;
+  sendPrompt(text: string, attachments?: ComposerAttachment[]): Promise<void>;
   sendAbort(): Promise<void>;
   reconnect(): void;
   disconnect(): void;
 }
+
+export type WorkspaceAttachment = { path: string; name: string; kind: "image" | "file" };
+
+export type ComposerAttachment =
+  | WorkspaceAttachment
+  | { id: string; name: string; kind: "pasted-image"; mimeType: string; data: string }
+  | { id: string; name: string; kind: "paste"; text: string };
 
 export interface CollabTranscriptProps {
   entries: SessionEntry[];
@@ -181,7 +188,10 @@ export interface CollabComposerProps {
   disabled?: boolean;
   placeholder?: string;
   isStreaming?: boolean;
-  onSend(text: string): void | Promise<void>;
+  commands?: import("./commandTypes").CommandOption[];
+  onSend(text: string, attachments?: ComposerAttachment[]): void | Promise<void>;
+  onCommand?(text: string): string | void | Promise<string | void>;
+  onSearchFiles?(query: string): Promise<WorkspaceAttachment[]>;
   onAbort?(): void | Promise<void>;
 }
 

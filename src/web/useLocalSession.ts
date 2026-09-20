@@ -10,6 +10,7 @@ import {
 import type {
   AgentEvent,
   AgentSnapshot,
+  ComposerAttachment,
   CollabStatus,
   SessionEntry,
   SessionHeader,
@@ -250,17 +251,33 @@ export function useLocalSession(): UseCollabSessionReturn {
   }, [resetSession]);
   connectRef.current = connect;
 
-  const sendPrompt = useCallback(async (text: string): Promise<void> => {
-    if (!text.trim()) throw new Error("Prompt is empty");
+  const sendPrompt = useCallback(async (text: string, attachments: ComposerAttachment[] = []): Promise<void> => {
+    if (!text.trim() && attachments.length === 0) throw new Error("Prompt is empty");
+    const fileAttachments = attachments.filter((attachment): attachment is Extract<ComposerAttachment, { kind: "image" | "file" }> => attachment.kind === "image" || attachment.kind === "file");
+    const pasteAttachments = attachments.filter((attachment): attachment is Extract<ComposerAttachment, { kind: "paste" }> => attachment.kind === "paste");
+    const pastedImages = attachments.filter((attachment): attachment is Extract<ComposerAttachment, { kind: "pasted-image" }> => attachment.kind === "pasted-image");
+    const fileBlock = fileAttachments.length > 0
+      ? `\n\n<attached_files>\n${fileAttachments.map((file) => `- ${file.path}`).join("\n")}\n</attached_files>\nRead the referenced workspace files as needed.`
+      : "";
+    const pasteBlock = pasteAttachments.map((paste) => `\n\n<pasted_text name="${paste.name}">\n${paste.text}\n</pasted_text>`).join("");
+    const prompt = `${text.trim() || "Please inspect the attached content."}${fileBlock}${pasteBlock}`;
     const authToken = new URLSearchParams(window.location.search).get("token") ?? "";
-    const response = await fetch(`/api/prompt?token=${encodeURIComponent(authToken)}`, {
+    const promptEndpoint = pastedImages.length > 0 ? "/api/prompt-with-images" : "/api/prompt";
+    const response = await fetch(`${promptEndpoint}?token=${encodeURIComponent(authToken)}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text }),
+      body: JSON.stringify({
+        text: prompt,
+        images: pastedImages.map((image) => ({ data: image.data, mimeType: image.mimeType })),
+      }),
     });
-    if (!response.ok) {
-      const body = (await response.json().catch(() => ({}))) as { error?: string };
-      throw new Error(body.error || `Prompt failed (${response.status})`);
+    const responseBody = (await response.json().catch(() => null)) as { ok?: unknown; error?: unknown } | null;
+    if (!response.ok || responseBody?.ok !== true) {
+      const serverError = typeof responseBody?.error === "string" ? responseBody.error : null;
+      if (pastedImages.length > 0 && !serverError) {
+        throw new Error("Reload the OMP host before sending pasted images. Your attachment was preserved.");
+      }
+      throw new Error(serverError || `Prompt failed (${response.status})`);
     }
   }, []);
 

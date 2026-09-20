@@ -1729,3 +1729,291 @@ code, pre {
     scroll-behavior: auto !important;
   }
 }
+
+/* ==========================================================================
+   Plugin feature panels (To-do / Advisor / Subagents)
+   ========================================================================== */
+
+.feature-panel {
+  border-top: 1px solid var(--line);
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.feature-panel-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.feature-panel-header h3,
+.feature-panel-header h4 {
+  margin: 0;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--faint);
+}
+
+.feature-panel-hint {
+  font-size: var(--text-xs);
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.feature-empty {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+
+.is-spinning {
+  animation: spin 1s linear infinite;
+}
+
+/* To-do -------------------------------------------------------------------- */
+
+.todo-panel .todo-phase {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.todo-panel .todo-phase + .todo-phase {
+  margin-top: 6px;
+}
+
+.todo-panel .todo-phase-name {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text);
+  cursor: pointer;
+  user-select: none;
+  background: transparent;
+}
+
+.todo-panel .todo-phase-name::-webkit-details-marker {
+  display: none;
+}
+
+.todo-panel .todo-phase-count {
+  font-size: var(--text-xs);
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0 6px;
+  line-height: 1.4;
+}
+
+.todo-panel .todo-task-list {
+  list-style: none;
+  margin: 0;
+  padding: 4px 10px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.todo-panel .todo-task {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: var(--text-sm);
+  color: var(--text);
+  min-width: 0;
+}
+
+.todo-panel .todo-task-icon {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--muted);
+}
+
+.todo-panel .todo-task.is-completed .todo-task-icon {
+  color: var(--green);
+}
+
+.todo-panel .todo-task.is-in_progress .todo-task-icon {
+  color: var(--purple);
+}
+
+.todo-panel .todo-task.is-blocked .todo-task-icon {
+  color: var(--amber);
+}
+
+.todo-panel .todo-task.is-abandoned .todo-task-icon {
+  color: var(--danger);
+}
+
+.todo-panel .todo-task-content {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.todo-panel .todo-task.is-completed .todo-task-content {
+  text-decoration: line-through;
+  color: var(--muted);
+}
+
+.todo-panel .todo-task-blocker {
+  flex-shrink: 0;
+  font-size: var(--text-xs);
+  color: var(--amber);
+  border: 1px solid var(--amber);
+  border-radius: 999px;
+  padding: 0 6px;
+}
+
+/* Advisor ------------------------------------------------------------------ */
+
+.advisor-panel .advisor-note-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.advisor-panel .advisor-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: var(--text-sm);
+  color: var(--text);
+  min-width: 0;
+}
+
+.advisor-panel .advisor-note-icon {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--purple);
+}
+
+.advisor-panel .advisor-note.is-concern .advisor-note-icon {
+  color: var(--amber);
+}
+
+.advisor-panel .advisor-note.is-blocker .advisor-note-icon {
+  color: var(--danger);
+}
+
+.advisor-panel .advisor-note-message {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.advisor-panel .advisor-note-time {
+  flex-shrink: 0;
+  font-size: var(--text-xs);
+  color: var(--faint);
+}
+
+/* Subagents ---------------------------------------------------------------- */
+
+.subagent-derived {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--line);
+  min-width: 0;
+}
+
+.subagent-derived .subagent-run-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.subagent-derived .subagent-run {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.subagent-derived .subagent-run-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 10px;
+  background: transparent;
+  border: none;
+  color: var(--text);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  text-align: left;
+}
+
+.subagent-derived .subagent-run-toggle:hover {
+  background: rgba(184, 92, 255, 0.08);
+}
+
+.subagent-derived .subagent-run-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.subagent-derived .subagent-run-status {
+  flex-shrink: 0;
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+
+.subagent-derived .subagent-run-status.is-running {
+  color: var(--purple);
+}
+
+.subagent-derived .subagent-run-status.is-completed {
+  color: var(--green);
+}
+
+.subagent-derived .subagent-run-status.is-failed {
+  color: var(--danger);
+}
+
+.subagent-derived .subagent-run-body {
+  border-top: 1px solid var(--line);
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.subagent-derived .subagent-run-section h5 {
+  margin: 0 0 4px;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--faint);
+}
+
+.subagent-derived .subagent-run-pre {
+  margin: 0;
+  max-height: 180px;
+  overflow: auto;
+  font-size: var(--text-xs);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--muted);
+}

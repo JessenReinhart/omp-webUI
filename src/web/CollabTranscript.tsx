@@ -12,7 +12,7 @@ import {
   scrollToBottom,
   toolActivities,
 } from "./transcript-model";
-import { Message, TranscriptEntry } from "./TranscriptEntry";
+import { ActionRow, Message, TranscriptEntry, toolIcon } from "./TranscriptEntry";
 
 const WRAP_STYLE: React.CSSProperties = { overflowWrap: "anywhere", whiteSpace: "pre-wrap" };
 
@@ -139,10 +139,13 @@ export function CollabTranscript({
       ))}
       {latestMessage ? <Message message={latestMessage} live /> : null}
       {tools.map((tool) => (
-        <p key={tool.id} style={WRAP_STYLE} className={`collab-tool-activity ${tool.status}`}>
-          {tool.name}: {tool.status}
-          {tool.detail ? ` · ${tool.detail}` : ""}
-        </p>
+        <ActionRow
+          key={tool.id}
+          icon={toolIcon(tool.name)}
+          label={tool.name}
+          state={tool.status}
+          stateLabel={tool.status}
+        />
       ))}
       {latestNotices.map((notice, index) => (
         <p key={`notice-${index}`} style={WRAP_STYLE} className={`collab-notice ${notice.level}`}>
