@@ -890,33 +890,21 @@ h6 {
 
 .collab-working {
   position: relative;
-  display: grid;
-  flex-shrink: 0;
-  grid-template-columns: 34px minmax(0, 1fr) auto;
+  display: flex;
   align-items: center;
-  gap: 11px;
+  flex-shrink: 0;
   width: fit-content;
-  min-width: 248px;
-  min-height: 56px;
   margin: 2px 0 10px 39px;
-  padding: 10px 12px 10px 10px;
-  overflow: hidden;
-  border: 1px solid rgba(108, 88, 237, 0.11);
-  border-radius: 15px;
-  color: #4d4857;
-  background: rgba(249, 247, 255, 0.8);
-  box-shadow: 0 12px 30px rgba(76, 58, 142, 0.08), inset 0 1px rgba(255, 255, 255, 0.92);
-  backdrop-filter: blur(14px);
+  padding: 6px 0;
+  overflow: visible;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
 }
 
 .collab-working::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(105deg, transparent 25%, rgba(255, 255, 255, 0.72) 48%, transparent 70%);
-  transform: translateX(-130%);
-  animation: working-sheen 2.8s var(--ease-out) infinite;
-  pointer-events: none;
+  display: none;
 }
 
 .working-mark {
