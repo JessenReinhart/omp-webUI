@@ -12,7 +12,9 @@ import {
   scrollToBottom,
   toolActivities,
 } from "./transcript-model";
-import { ActionRow, Message, TranscriptEntry, toolIcon } from "./TranscriptEntry";
+import { ActionRow, Message, TranscriptEntry, ToolResultsContext, toolIcon } from "./TranscriptEntry";
+import LatticeLoader from "./LatticeLoader";
+import CallChip from "./CallChip";
 
 const WRAP_STYLE: React.CSSProperties = { overflowWrap: "anywhere", whiteSpace: "pre-wrap" };
 
@@ -39,6 +41,18 @@ export function CollabTranscript({
   const latestMessage = useMemo(() => liveMessage(safeEvents, safeEntries), [safeEntries, safeEvents]);
   const tools = useMemo(() => toolActivities(safeEvents, safeEntries), [safeEvents, safeEntries]);
   const latestNotices = useMemo(() => notices(safeEvents), [safeEvents]);
+
+  // Map toolCallId -> toolResult message so tool calls know their completion status and results
+  const toolResults = useMemo(() => {
+    const map = new Map<string, typeof safeEntries[0]["message"]>();
+    for (const entry of safeEntries) {
+      if (isRecord(entry) && entry.type === "message" && isRecord(entry.message) && entry.message.role === "toolResult") {
+        const id = asText(entry.message.toolCallId);
+        if (id) map.set(id, entry.message);
+      }
+    }
+    return map;
+  }, [safeEntries]);
 
   // A cheap signature over visible content, so only genuine additions raise the jump affordance.
   const contentSignature = useMemo(
@@ -134,19 +148,47 @@ export function CollabTranscript({
           </div>
         </div>
       ) : null}
-      {safeEntries.map((entry, index) => (
-        <TranscriptEntry key={entryKey(entry, index)} entry={entry} />
-      ))}
-      {latestMessage ? <Message message={latestMessage} live /> : null}
-      {tools.map((tool) => (
-        <ActionRow
-          key={tool.id}
-          icon={toolIcon(tool.name)}
-          label={tool.name}
-          state={tool.status}
-          stateLabel={tool.status}
-        />
-      ))}
+      <ToolResultsContext.Provider value={toolResults as any}>
+        {safeEntries.map((entry, index) => {
+          if (
+            isRecord(entry) &&
+            entry.type === "message" &&
+            isRecord(entry.message) &&
+            entry.message.role === "toolResult" &&
+            asText(entry.message.toolCallId)
+          ) {
+            return null;
+          }
+          return <TranscriptEntry key={entryKey(entry, index)} entry={entry} />;
+        })}
+        {latestMessage ? <Message message={latestMessage} live /> : null}
+      </ToolResultsContext.Provider>
+      {tools.map((tool) => {
+        const chipStatus = tool.status === "complete" ? "done" : tool.status === "error" ? "error" : "running";
+        const iconType = tool.name.toLowerCase().includes("bash") || tool.name.toLowerCase().includes("cmd")
+          ? "terminal"
+          : tool.name.toLowerCase().includes("search") || tool.name.toLowerCase().includes("grep")
+            ? "search"
+            : tool.name.toLowerCase().includes("edit") || tool.name.toLowerCase().includes("write")
+              ? "edit"
+              : "file";
+        return (
+          <div key={tool.id} className="transcript-tool-block">
+            <CallChip
+              name={tool.name}
+              argument={tool.detail ?? ""}
+              icon={iconType}
+              status={chipStatus}
+              surfaceColor="rgba(244, 243, 248, 0.75)"
+              color="inherit"
+              progressColor="#6c58ed"
+              doneColor="#16a34a"
+              errorColor="#dc2626"
+              showTimer
+            />
+          </div>
+        );
+      })}
       {latestNotices.map((notice, index) => (
         <p key={`notice-${index}`} style={WRAP_STYLE} className={`collab-notice ${notice.level}`}>
           {notice.message}
@@ -154,25 +196,24 @@ export function CollabTranscript({
       ))}
       {isStreaming ? (
         <div className="collab-working" role="status" aria-live="polite">
-          <span className="working-mark" aria-hidden="true">
-            <i />
-            <i />
-            <i />
-            <i />
-          </span>
-          <span className="working-copy">
-            <strong>OMP is working</strong>
-            <small>
-              {queuedMessages > 0
-                ? `${queuedMessages} ${queuedMessages === 1 ? "message" : "messages"} queued`
-                : "Thinking through your request"}
-            </small>
-          </span>
-          <span className="working-ellipsis" aria-hidden="true">
-            <i />
-            <i />
-            <i />
-          </span>
+          <LatticeLoader
+            status="working"
+            label={queuedMessages > 0 ? `${queuedMessages} queued` : "OMP is working"}
+            doneLabel="Done"
+            errorLabel="Failed"
+            pattern="orbit"
+            grid={3}
+            shape="round"
+            cellSize={5}
+            gap={2}
+            fontSize={12}
+            step={90}
+            idleOpacity={0.2}
+            glow
+            glowColor="#6c58ed"
+            color="currentColor"
+            showTimer
+          />
         </div>
       ) : null}
       {showJump ? (

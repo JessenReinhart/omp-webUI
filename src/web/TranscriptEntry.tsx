@@ -1,7 +1,9 @@
 import {
+  Check,
   CheckCircle2,
   ChevronDown,
   Code,
+  Copy,
   FilePlus2,
   FileSearch,
   FileText,
@@ -16,9 +18,11 @@ import {
   Wrench,
   XCircle,
 } from "lucide-react";
+import { createContext, useContext, useState } from "react";
 import type { LucideIcon } from "lucide-react";
 
 import type { SessionEntry, WireMessage } from "./collabTypes";
+import CallChip from "./CallChip";
 import {
   asText,
   contentText,
@@ -51,6 +55,9 @@ const TOOL_ICONS: Record<string, LucideIcon> = {
 export function toolIcon(name: string): LucideIcon {
   return TOOL_ICONS[name.toLowerCase()] ?? Wrench;
 }
+
+export type ToolResultLookup = Map<string, WireMessage>;
+export const ToolResultsContext = createContext<ToolResultLookup>(new Map());
 
 interface ActionRowProps {
   className?: string;
@@ -98,17 +105,140 @@ export function ActionRow({ className = "", icon: Icon, label, state, stateLabel
   );
 }
 
-function ToolBlock({ block }: { block: Record<string, unknown> }) {
-  const name = asText(block.name) ?? "tool";
-  const intent = asText(block.intent);
-  const argsJson = safeStringify(block.arguments ?? block.input ?? null);
-  const Icon = toolIcon(name);
-  const label = intent ? `Calling ${name}: ${intent}` : `Calling ${name}`;
+function toolChipIcon(name: string): "terminal" | "file" | "search" | "edit" {
+  const n = name.toLowerCase();
+  if (n.includes("bash") || n.includes("terminal") || n.includes("cmd") || n.includes("eval") || n.includes("sh")) return "terminal";
+  if (n.includes("search") || n.includes("grep") || n.includes("find") || n.includes("glob")) return "search";
+  if (n.includes("edit") || n.includes("write") || n.includes("patch") || n.includes("replace")) return "edit";
+  return "file";
+}
+
+function summarizeToolInput(input: unknown): string {
+  if (!input) return "";
+  if (typeof input === "string") return input;
+  if (typeof input === "object" && input !== null) {
+    const obj = input as Record<string, unknown>;
+    const direct = obj.command ?? obj.cmd ?? obj.file_path ?? obj.path ?? obj.pattern ?? obj.query ?? obj.prompt;
+    if (typeof direct === "string") return direct;
+    try {
+      const s = JSON.stringify(input);
+      return s.length > 50 ? s.slice(0, 47) + "…" : s;
+    } catch {
+      return "";
+    }
+  }
+  return String(input);
+}
+
+function ToolDrawer({
+  argsJson,
+  resultJson,
+  isOpen,
+}: {
+  argsJson: string | null;
+  resultJson: string | null;
+  isOpen: boolean;
+}) {
+  const hasInput = Boolean(argsJson && argsJson !== "null" && argsJson !== "{}");
+  const hasResult = Boolean(resultJson);
+  const [activeTab, setActiveTab] = useState<"input" | "result">(() => (hasResult ? "result" : "input"));
+  const [copied, setCopied] = useState(false);
+
+  if (!isOpen || (!hasInput && !hasResult)) return null;
+
+  const currentContent = activeTab === "result" && hasResult ? resultJson : argsJson;
+
+  const handleCopy = () => {
+    if (!currentContent) return;
+    void navigator.clipboard.writeText(currentContent).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1600);
+    });
+  };
 
   return (
-    <ActionRow icon={Icon} label={label} state="info" stateLabel="Tool call">
-      <pre className="transcript-pre">{argsJson}</pre>
-    </ActionRow>
+    <div className="tool-drawer">
+      <div className="tool-drawer-bar">
+        <div className="tool-drawer-tabs">
+          {hasInput ? (
+            <button
+              type="button"
+              className={`tool-drawer-tab${activeTab === "input" ? " is-active" : ""}`}
+              onClick={() => setActiveTab("input")}
+            >
+              Input
+            </button>
+          ) : null}
+          {hasResult ? (
+            <button
+              type="button"
+              className={`tool-drawer-tab${activeTab === "result" ? " is-active" : ""}`}
+              onClick={() => setActiveTab("result")}
+            >
+              Result
+            </button>
+          ) : null}
+        </div>
+        {currentContent ? (
+          <button
+            type="button"
+            className="tool-drawer-copy-btn"
+            title="Copy payload"
+            aria-label="Copy payload"
+            onClick={handleCopy}
+          >
+            {copied ? <Check size={12} aria-hidden="true" /> : <Copy size={12} aria-hidden="true" />}
+            <span>{copied ? "Copied" : "Copy"}</span>
+          </button>
+        ) : null}
+      </div>
+      <div className="tool-drawer-body">
+        <pre className="transcript-pre">{currentContent}</pre>
+      </div>
+    </div>
+  );
+}
+
+function ToolBlock({ block }: { block: Record<string, unknown> }) {
+  const results = useContext(ToolResultsContext);
+  const [open, setOpen] = useState(false);
+  const name = asText(block.name) ?? "tool";
+  const intent = asText(block.intent);
+  const toolCallId = asText(block.toolCallId) ?? asText(block.id);
+  const matchedResult = toolCallId ? results.get(toolCallId) : undefined;
+
+  const argsJson = safeStringify(block.arguments ?? block.input ?? null);
+  const resultJson = matchedResult ? safeStringify(matchedResult.content) : null;
+  const argSummary = intent || summarizeToolInput(block.arguments ?? block.input);
+
+  const status: "running" | "done" | "error" = matchedResult
+    ? matchedResult.isError === true
+      ? "error"
+      : "done"
+    : "running";
+
+  const hasDrawer = Boolean((argsJson && argsJson !== "null" && argsJson !== "{}") || resultJson);
+
+  return (
+    <div className="transcript-tool-block">
+      <CallChip
+        name={name}
+        argument={argSummary}
+        icon={toolChipIcon(name)}
+        status={status}
+        surfaceColor="rgba(244, 243, 248, 0.75)"
+        color="inherit"
+        progressColor="#6c58ed"
+        doneColor="#16a34a"
+        errorColor="#dc2626"
+        showTimer={false}
+        showChevron={hasDrawer}
+        isOpen={open}
+        onClick={hasDrawer ? () => setOpen((prev) => !prev) : undefined}
+        className={hasDrawer ? "is-expandable" : undefined}
+      />
+      <ToolDrawer argsJson={argsJson} resultJson={resultJson} isOpen={open} />
+    </div>
   );
 }
 
@@ -140,17 +270,31 @@ function MessageContent({ message }: { message: WireMessage }) {
   }
 
   if (message.role === "toolResult") {
+    // Lone toolResult that wasn't correlated with an assistant toolCall
+    const [open, setOpen] = useState(false);
     const toolLabel = asText(message.toolName) ?? "Tool";
     const isError = message.isError === true;
+    const resultJson = safeStringify(message.content);
+
     return (
-      <ActionRow
-        stateLabel={isError ? "Failed" : "Completed"}
-        icon={isError ? XCircle : CheckCircle2}
-        label={`${toolLabel} ${isError ? "failed" : "completed"}`}
-        state={isError ? "error" : "complete"}
-      >
-        <pre className="transcript-pre">{safeStringify(message.content)}</pre>
-      </ActionRow>
+      <div className="transcript-tool-block">
+        <CallChip
+          name={toolLabel}
+          argument={isError ? "failed" : "completed"}
+          icon={toolChipIcon(toolLabel)}
+          status={isError ? "error" : "done"}
+          surfaceColor="rgba(244, 243, 248, 0.75)"
+          color="inherit"
+          doneColor="#16a34a"
+          errorColor="#dc2626"
+          showTimer={false}
+          showChevron={true}
+          isOpen={open}
+          onClick={() => setOpen((prev) => !prev)}
+          className="is-expandable"
+        />
+        <ToolDrawer argsJson={null} resultJson={resultJson} isOpen={open} />
+      </div>
     );
   }
 

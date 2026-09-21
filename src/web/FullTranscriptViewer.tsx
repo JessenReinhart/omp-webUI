@@ -1,5 +1,7 @@
+import { useMemo } from "react";
 import type { SessionEntry } from "./collabTypes";
-import { TranscriptEntry } from "./TranscriptEntry";
+import { TranscriptEntry, ToolResultsContext } from "./TranscriptEntry";
+import { asText, isRecord } from "./transcript-model";
 
 const MAX_DISPLAYED_ENTRIES = 1000;
 
@@ -23,6 +25,17 @@ export function FullTranscriptViewer({ entries, title }: FullTranscriptViewerPro
     ? safeEntries.slice(safeEntries.length - MAX_DISPLAYED_ENTRIES)
     : safeEntries;
 
+  const toolResults = useMemo(() => {
+    const map = new Map<string, typeof safeEntries[0]["message"]>();
+    for (const entry of safeEntries) {
+      if (isRecord(entry) && entry.type === "message" && isRecord(entry.message) && entry.message.role === "toolResult") {
+        const id = asText(entry.message.toolCallId);
+        if (id) map.set(id, entry.message);
+      }
+    }
+    return map;
+  }, [safeEntries]);
+
   return (
     <div className="collab-transcript full-transcript-viewer" role="log" aria-label="Session transcript">
       {title ? (
@@ -41,9 +54,20 @@ export function FullTranscriptViewer({ entries, title }: FullTranscriptViewerPro
           <p>This session does not contain any recorded messages yet.</p>
         </div>
       ) : (
-        displayedEntries.map((entry, index) => (
-          <TranscriptEntry key={entryKey(entry, index)} entry={entry} />
-        ))
+        <ToolResultsContext.Provider value={toolResults as any}>
+          {displayedEntries.map((entry, index) => {
+            if (
+              isRecord(entry) &&
+              entry.type === "message" &&
+              isRecord(entry.message) &&
+              entry.message.role === "toolResult" &&
+              asText(entry.message.toolCallId)
+            ) {
+              return null;
+            }
+            return <TranscriptEntry key={entryKey(entry, index)} entry={entry} />;
+          })}
+        </ToolResultsContext.Provider>
       )}
     </div>
   );
