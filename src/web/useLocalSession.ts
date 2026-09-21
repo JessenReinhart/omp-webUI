@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  committedLastTimestamp,
   committedMessageIdentities,
+  committedMessageKeys,
   committedToolCallIds,
   isMessageAgentEvent,
   isRecord,
   isToolAgentEvent,
+  messageCommitKey,
   messageIdentity,
 } from "./collabTypes";
 import type {
@@ -47,8 +50,11 @@ function isAgentSnapshot(value: unknown): value is AgentSnapshot {
   return isRecord(value)
     && typeof value.id === "string"
     && typeof value.displayName === "string"
-    && (value.kind === "main" || value.kind === "sub")
-    && typeof value.status === "string";
+    && typeof value.kind === "string"
+    && typeof value.status === "string"
+    && (value.createdAt === undefined || (typeof value.createdAt === "number" && Number.isFinite(value.createdAt)))
+    && (value.lastActivity === undefined || (typeof value.lastActivity === "number" && Number.isFinite(value.lastActivity)))
+    && (value.activity === undefined || typeof value.activity === "string");
 }
 
 function isSessionEntry(value: unknown): value is SessionEntry {
@@ -64,14 +70,14 @@ function parseFrame(value: unknown): LocalFrame | null {
     if (!Array.isArray(value.entries) || !value.entries.every(isSessionEntry)) return null;
     if (value.header !== undefined && value.header !== null && !isSessionHeader(value.header)) return null;
     if (value.state !== undefined && value.state !== null && !isSessionState(value.state)) return null;
-    if (value.agents !== undefined && (!Array.isArray(value.agents) || !value.agents.every(isAgentSnapshot))) return null;
+    const rawAgents = Array.isArray(value.agents) ? value.agents.filter(isAgentSnapshot) : [];
     return {
       seq: value.seq,
       kind: "snapshot",
       header: value.header ?? null,
       entries: value.entries,
       state: value.state ?? null,
-      agents: value.agents ?? [],
+      agents: rawAgents,
     };
   }
 
@@ -202,14 +208,22 @@ export function useLocalSession(): UseCollabSessionReturn {
         committedToolCallIdsRef.current = settledTools;
         setHeader(frame.header);
         setEntries(frame.entries);
+        // A snapshot is the authoritative committed transcript boundary, but
+        // registry-churn snapshots can land mid-turn while a message is still
+        // streaming. Dropping every message preview then blanks the transcript
+        // until the next stream frame. Keep message previews whose commit key
+        // is newer than the newest committed entry — those are the in-flight
+        // turn — and drop only previews already committed above.
+        const lastCommittedAt = committedLastTimestamp(frame.entries);
+        const committedKeys = committedMessageKeys(frame.entries);
         setEvents((previous) =>
           previous.filter((event) => {
-            // A snapshot is the authoritative committed transcript boundary.
-            // Drop every older message preview, including partial updates whose
-            // content/timestamp cannot exactly match the committed final message.
-            // Any genuinely newer stream frames arrive after this snapshot and
-            // are appended again through the sequence-ordered SSE stream.
-            if (isMessageAgentEvent(event)) return false;
+            if (isMessageAgentEvent(event)) {
+              const key = messageCommitKey(event.message);
+              if (key === null || committedKeys.has(key)) return false;
+              const timestamp = event.message.timestamp;
+              return typeof timestamp === "number" && timestamp > lastCommittedAt;
+            }
             if (isToolAgentEvent(event)) return !settledTools.has(event.toolCallId);
             return true;
           }),

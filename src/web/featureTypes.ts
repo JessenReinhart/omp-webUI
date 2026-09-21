@@ -25,6 +25,17 @@ export interface SubagentRecord {
   lastActivity?: number;
   result?: string;
   isError?: boolean;
+  parentId?: string;
+  createdAt?: number;
+  hasSessionFile?: boolean;
+  /** Delegating tool this run came from ("task", "subagent", …); registry-only rows have none. */
+  toolName?: string;
+  /** Registry agent id this run was merged with, when identity resolved. */
+  agentId?: string;
+  /** Every agent id extracted from the run (tool result envelope, UUIDs, registry match). */
+  agentIds?: string[];
+  /** Resolved registry display name, row live agent. */
+  agentName?: string;
 }
 
 

@@ -35,10 +35,15 @@ export interface SessionState {
 export interface AgentSnapshot {
   id: string;
   displayName: string;
-  kind: "main" | "sub";
+  /** Registry refs may surface additional kinds; treat unknown kinds as "sub". */
+  kind: "main" | "sub" | (string & {});
+  parentId?: string;
   status: string;
-  lastActivity?: number;
   hasSessionFile?: boolean;
+  createdAt?: number;
+  lastActivity?: number;
+  /** Latest registry activity gist (current tool / last intent), when known. */
+  activity?: string;
 }
 
 export interface SessionHeader {
@@ -105,6 +110,21 @@ export function committedMessageKeys(entries: SessionEntry[]): Set<string> {
     if (key) keys.add(key);
   }
   return keys;
+}
+
+/**
+ * Newest committed message timestamp in a snapshot branch, or 0 when the
+ * branch holds no timestamped message. Lets a snapshot handler tell an
+ * in-flight streaming preview (newer) from a stale one (already committed).
+ */
+export function committedLastTimestamp(entries: SessionEntry[]): number {
+  let newest = 0;
+  for (const entry of entries) {
+    if (!isRecord(entry) || entry.type !== "message" || !isRecord(entry.message)) continue;
+    const timestamp = entry.message.timestamp;
+    if (typeof timestamp === "number" && Number.isFinite(timestamp) && timestamp > newest) newest = timestamp;
+  }
+  return newest;
 }
 
 export type MessageAgentEvent = Extract<AgentEvent, { message: WireMessage }>;

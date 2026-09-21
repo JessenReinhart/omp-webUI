@@ -10,6 +10,7 @@ import {
   SKILL_PROMPT_MESSAGE_TYPE,
 } from "@oh-my-pi/pi-coding-agent";
 import { expandSlashCommand } from "@oh-my-pi/pi-coding-agent/extensibility/slash-commands";
+import { AgentRegistry } from "@oh-my-pi/pi-coding-agent/registry/agent-registry";
 import { computeDefaultSessionDir } from "@oh-my-pi/pi-coding-agent/session/session-paths";
 import { broadcastSnapshot, getEventRing, getWebUiRuntime, isCursorReplayable, subscribeStream } from "../extension/index";
 
@@ -399,6 +400,49 @@ async function handler(request: Request, token: string): Promise<Response> {
 
       const result = await loadSessionFile(filePath, new FileSessionStorage());
       return json({ ok: true, entries: result.entries });
+    } catch (error) {
+      return json({ error: error instanceof Error ? error.message : String(error) }, 500);
+    }
+  }
+
+  // GET /api/agents/:agentId/transcript — read-only transcript for a registry
+  // agent. Live agents are served from their in-memory session; parked ones from
+  // their persisted session file. The agent is looked up in the registry by id,
+  // so client-supplied paths are never used.
+  if (url.pathname.startsWith("/api/agents/") && url.pathname.endsWith("/transcript")) {
+    if (request.method !== "GET") return json({ error: "Method not allowed" }, 405);
+    if (!isAuthorized(url, token)) return json({ error: "unauthorized" }, 401);
+
+    try {
+      const agentId = decodeURIComponent(url.pathname.slice("/api/agents/".length, -"/transcript".length));
+      if (!agentId || agentId.includes("/")) return json({ error: "Invalid agentId parameter" }, 400);
+
+      const ref = AgentRegistry.global().get(agentId);
+      if (!ref) return json({ error: "Unknown agent" }, 404);
+
+      const meta = {
+        agentId: ref.id,
+        displayName: ref.displayName,
+        kind: ref.kind,
+        status: ref.status,
+        activity: ref.activity ?? null,
+        parentId: ref.parentId ?? null,
+        hasSessionFile: ref.sessionFile !== null,
+        createdAt: ref.createdAt,
+        lastActivity: ref.lastActivity,
+      };
+
+      if (ref.session) {
+        const entries = ref.session.sessionManager.getBranch();
+        return json({ ...meta, source: "live", entries });
+      }
+
+      if (!ref.sessionFile) {
+        return json({ ...meta, source: "none", entries: [] });
+      }
+
+      const result = await loadSessionFile(ref.sessionFile, new FileSessionStorage());
+      return json({ ...meta, source: "parked", entries: result.entries });
     } catch (error) {
       return json({ error: error instanceof Error ? error.message : String(error) }, 500);
     }

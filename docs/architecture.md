@@ -40,11 +40,14 @@ The server binds only to `127.0.0.1` and uses the first available port from `438
 | `GET` | `/api/sessions` | Past session summaries. |
 | `GET` | `/api/sessions/:fileId.jsonl` | Read-only entries for one past session. |
 | `GET` | `/api/events?cursor={seq}` | SSE transcript stream. A missing, invalid, or non-positive cursor receives a fresh snapshot; the stream sends missed frames, live frames, and 15-second keepalive comments. |
+| `GET` | `/api/agents/:agentId/transcript` | Read-only transcript for a registry agent. Live agents return branch entries from memory; parked agents load from their session file. |
 | `POST` | `/api/prompt` | Send `{ text }` to the active OMP session. |
 | `POST` | `/api/abort` | Abort the active OMP session. |
 | `POST` | `/api/sessions/:fileId.jsonl/resume` | Switch OMP to a past session, then broadcast its live snapshot. |
 
 Past session file IDs must be `.jsonl` basenames without path separators or `..`; the resolved path must remain within OMP's session directory.
+
+Agent transcripts are addressed by registry agent id, never by a client-supplied path: the id is looked up in `AgentRegistry.global()` and the file location comes from the resolved `AgentRef`. An unknown id is a 404; a known agent with no persisted session yet returns `200` with an empty `entries` array so the UI can distinguish "nothing recorded" from "lookup failed".
 
 ## Transcript lifecycle
 

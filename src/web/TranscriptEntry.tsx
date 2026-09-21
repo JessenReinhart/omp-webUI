@@ -1,5 +1,4 @@
 import {
-  BrainCircuit,
   CheckCircle2,
   ChevronDown,
   Code,
@@ -125,20 +124,8 @@ function MessageContent({ message }: { message: WireMessage }) {
               const text = asText(block.text);
               return text ? <MarkdownMessage key={index} text={text} /> : null;
             }
-            case "thinking": {
-              const text = asText(block.thinking);
-              return text ? (
-                <ActionRow
-                  key={index}
-                  stateLabel="Reasoning"
-                  icon={BrainCircuit}
-                  label="Thinking"
-                  state="info"
-                >
-                  <p className="transcript-thinking-text">{text}</p>
-                </ActionRow>
-              ) : null;
-            }
+            case "thinking":
+              return null;
             case "redactedThinking":
               return null;
             case "toolCall":

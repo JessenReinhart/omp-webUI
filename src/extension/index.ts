@@ -1,4 +1,5 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "@oh-my-pi/pi-coding-agent";
+import { AgentRegistry } from "@oh-my-pi/pi-coding-agent/registry/agent-registry";
 import { openBrowser } from "../host/open-browser";
 import { startWebUiServer, type WebUiServer } from "../host/server";
 
@@ -17,7 +18,8 @@ export type LocalFrameBase =
   | { kind: "tool"; type: string; toolCallId: string; toolName: string; args?: unknown; partialResult?: unknown; result?: unknown; isError?: boolean; intent?: string }
   | { kind: "state"; state: unknown };
 
-export type LocalFrame = { seq: number } & LocalFrameBase;
+/** Every frame carries `source: "main"`: the extension is bound to the parent session. */
+export type LocalFrame = { seq: number; source?: "main" } & LocalFrameBase;
 
 export interface SnapshotFrameBase {
   kind: "snapshot";
@@ -40,7 +42,20 @@ export function buildSnapshotFrameBase(): SnapshotFrameBase {
     header,
     entries,
     state: { isStreaming },
-    agents: [],
+    agents: AgentRegistry.global()
+      .list()
+      .filter((ref) => ref.kind === "sub")
+      .map((ref) => ({
+        id: ref.id,
+        displayName: ref.displayName,
+        kind: ref.kind,
+        parentId: ref.parentId,
+        status: ref.status,
+        hasSessionFile: !!ref.sessionFile,
+        createdAt: ref.createdAt,
+        lastActivity: ref.lastActivity,
+        activity: ref.activity,
+      })),
   };
 }
 
@@ -52,6 +67,8 @@ function snapshotHeaderId(header: unknown): string | null {
 
 const EVENT_LIMIT = 500;
 const TURN_END_SNAPSHOT_DEFER_MS = 50;
+const AGENT_SNAPSHOT_DEBOUNCE_MS = 150;
+
 let globalSeq = 0;
 let latestSnapshotSeq = 0;
 let latestSnapshotHeaderId: string | null = null;
@@ -80,9 +97,23 @@ export function isCursorReplayable(cursor: number): boolean {
   return cursor >= oldestSeq && cursor <= newestSeq;
 }
 
-export function broadcast(frame: LocalFrameBase): LocalFrame {
+export function broadcast(frame: LocalFrameBase, opts: { toRing?: boolean } = {}): LocalFrame {
   globalSeq += 1;
-  const fullFrame: LocalFrame = { seq: globalSeq, ...frame };
+  // Frames are main-session-scoped: extension handlers bind to the owning
+  // session's pi; subagent internals travel on the separate subagentEventBus
+  // and task:subagent:* channels, so every frame here carries the parent's
+  // transcript. The source tag makes that contract explicit for clients.
+  const fullFrame: LocalFrame = { seq: globalSeq, source: "main", ...frame };
+  if (opts.toRing === false) {
+    for (const listener of streamListeners) {
+      try {
+        listener(fullFrame);
+      } catch {
+        // ignore broken listeners
+      }
+    }
+    return fullFrame;
+  }
   eventRing.push(fullFrame);
   if (eventRing.length > EVENT_LIMIT) {
     eventRing.shift();
@@ -108,10 +139,45 @@ export function broadcastSnapshot(): LocalFrame {
   latestSnapshotHeaderId = snapshotHeaderId(base.header);
   return frame;
 }
+function broadcastRegistrySnapshot(): void {
+  // Registry churn (subagent spawn/park) fires mid-turn. Live viewers need
+  // the agents field immediately, but pushing these snapshots into the replay
+  // ring only evicts turn-boundary frames — a reconnecting client receives a
+  // fresh ring-backed snapshot on connect anyway. Keep it listener-only.
+  if (streamListeners.size === 0) return;
+  const base = buildSnapshotFrameBase();
+  const frame = broadcast(base, { toRing: false });
+  latestSnapshotSeq = frame.seq;
+  latestSnapshotHeaderId = snapshotHeaderId(base.header);
+}
+
+let registrySnapshotTimer: Timer | undefined;
+let registryUnsubscribe: (() => void) | undefined;
+
+/** Stops registry-driven snapshot traffic. Safe to call repeatedly. */
+export function stopRegistryWatch(): void {
+  if (registrySnapshotTimer) {
+    clearTimeout(registrySnapshotTimer);
+    registrySnapshotTimer = undefined;
+  }
+  const unsubscribe = registryUnsubscribe;
+  registryUnsubscribe = undefined;
+  unsubscribe?.();
+}
 
 export default function webUiExtension(pi: ExtensionAPI) {
   pi.setLabel("omp-webUI");
   cachedApi = pi;
+
+  const scheduleRegistrySnapshot = () => {
+    if (registrySnapshotTimer) return;
+    registrySnapshotTimer = setTimeout(() => {
+      registrySnapshotTimer = undefined;
+      broadcastRegistrySnapshot();
+    }, AGENT_SNAPSHOT_DEBOUNCE_MS);
+  };
+  registryUnsubscribe?.();
+  registryUnsubscribe = AgentRegistry.global().onChange(scheduleRegistrySnapshot);
 
   // Subscribe to all streaming/message events once at extension scope
   pi.on("session_start", () => {
@@ -210,11 +276,17 @@ export default function webUiExtension(pi: ExtensionAPI) {
       if (command === "stop") {
         server?.stop();
         server = undefined;
+        // No server means no SSE listeners can exist; drop the registry
+        // subscription too so subagent churn stops doing snapshot work.
+        stopRegistryWatch();
         ctx.ui.notify("omp-webUI stopped", "info");
         return;
       }
 
       if (!server) {
+        if (!registryUnsubscribe) {
+          registryUnsubscribe = AgentRegistry.global().onChange(scheduleRegistrySnapshot);
+        }
         try {
           server = await startWebUiServer();
         } catch (error) {
@@ -246,5 +318,6 @@ export default function webUiExtension(pi: ExtensionAPI) {
     cachedApi = null;
     cachedCtx = null;
     streamListeners.clear();
+    stopRegistryWatch();
   });
 }
