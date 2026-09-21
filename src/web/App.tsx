@@ -10,6 +10,7 @@ import { DEFAULT_COMMANDS, parseCommandCatalog, type CommandCatalog, type Comman
 import { FeatureProvider, useFeatureSelection } from "./featureStore";
 import { Slot } from "./plugin-system";
 import { useLocalSession } from "./useLocalSession";
+import { useResizableSidebar } from "./useResizableSidebar";
 
 interface SessionHost {
   sessionName?: string;
@@ -74,6 +75,12 @@ export function App() {
   const [sessionNonce, setSessionNonce] = useState(0);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [agentsOpen, setAgentsOpen] = useState(false);
+  const { dragging, handleProps } = useResizableSidebar({
+    storageKey: "omp.webui.sidebar-width",
+    min: 200,
+    max: 420,
+    fallback: 290,
+  });
   const [commandCatalog, setCommandCatalog] = useState<CommandCatalog | null>(null);
   // Once the user explicitly opens/closes the agents panel, stop auto-opening it.
   const agentsTouchedRef = useRef(false);
@@ -328,8 +335,8 @@ export function App() {
   }, [sidebarOpen, agentsOpen]);
 
   return (
-    <FeatureProvider selection={features}>
-    <div className={`app-shell${sidebarOpen ? " sidebar-is-open" : ""}${agentsOpen ? " agents-is-open" : ""}`}>
+    <FeatureProvider selection={features} agentsPanelOpen={agentsOpen}>
+    <div className={`app-shell${sidebarOpen ? " sidebar-is-open" : ""}${agentsOpen ? " agents-is-open" : ""}${dragging ? " is-resizing" : ""}`}>
       <div className="sidebar-scrim" aria-hidden="true" onClick={() => setSidebarOpen(false)} />
 
       <aside className="session-sidebar" aria-label="Session navigation">
@@ -364,6 +371,8 @@ export function App() {
         </nav>
         <Slot name="sidebar.bottom" />
       </aside>
+
+      <div className="sidebar-resize-handle" {...handleProps} />
 
       <main className="main-column">
         <header className="topbar">

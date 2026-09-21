@@ -130,7 +130,7 @@ code, pre {
 
 .app-shell {
   display: grid;
-  grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
+  grid-template-columns: var(--sidebar-w) 6px minmax(0, 1fr);
   height: 100dvh;
   width: 100vw;
   background: var(--bg);
@@ -141,7 +141,7 @@ code, pre {
 /* Agents panel docked at desktop width, only while open; hidden when closed. */
 @media (min-width: 1201px) {
   .app-shell.agents-is-open {
-    grid-template-columns: var(--sidebar-w) minmax(0, 1fr) var(--agents-w);
+    grid-template-columns: var(--sidebar-w) 6px minmax(0, 1fr) var(--agents-w);
   }
 
   .app-shell:not(.agents-is-open) .subagents-panel {
@@ -1318,6 +1318,11 @@ code, pre {
     grid-template-columns: minmax(0, 1fr);
   }
 
+  /* Drawer layout: the docked-column handle has no track to sit in. */
+  .sidebar-resize-handle {
+    display: none;
+  }
+
   .nav-trigger {
     display: grid;
   }
@@ -1942,9 +1947,14 @@ code, pre {
 }
 
 .subagent-derived .subagent-run {
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-soft);
   border-radius: var(--radius-sm);
   overflow: hidden;
+  background: var(--panel-2);
+}
+
+.subagent-derived .subagent-run:hover {
+  border-color: var(--line);
 }
 
 .subagent-derived .subagent-run-toggle {
@@ -1955,14 +1965,21 @@ code, pre {
   padding: 6px 10px;
   background: transparent;
   border: none;
+  border-radius: var(--radius-sm);
   color: var(--text);
   font-size: var(--text-sm);
   cursor: pointer;
   text-align: left;
 }
 
+.subagent-derived .subagent-run-toggle:focus-visible {
+  outline: 2px solid var(--purple) !important;
+  outline-offset: -2px !important;
+  border-radius: var(--radius-sm);
+}
+
 .subagent-derived .subagent-run-toggle:hover {
-  background: rgba(184, 92, 255, 0.08);
+  background: var(--purple-soft);
 }
 
 .subagent-derived .subagent-run-name {
@@ -1992,7 +2009,7 @@ code, pre {
 }
 
 .subagent-derived .subagent-run-body {
-  border-top: 1px solid var(--line);
+  background: var(--panel-2);
   padding: 8px 10px;
   display: flex;
   flex-direction: column;
@@ -2016,4 +2033,93 @@ code, pre {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   color: var(--muted);
+  background: var(--bg);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
 }
+/* Subagent read-only transcript (Conversation section) --------------------- */
+
+.subagent-derived .subagent-run-transcript {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--panel-2);
+  overflow: hidden;
+}
+
+.subagent-derived .subagent-run-transcript-meta {
+  margin: 0;
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--line-soft);
+  font-size: var(--text-xs);
+  color: var(--faint);
+  overflow-wrap: anywhere;
+}
+
+/* FullTranscriptViewer is sized for the main column; clamp it to the drawer. */
+.subagent-derived .subagent-run-transcript .full-transcript-viewer {
+  flex: none;
+  max-height: 320px;
+  padding: 8px 10px;
+  gap: 8px;
+  background: transparent;
+}
+
+.subagent-derived .subagent-run-transcript .collab-message {
+  font-size: var(--text-xs);
+}
+
+.subagent-derived .subagent-run-state {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+
+.subagent-derived .subagent-run-state.is-error {
+  display: block;
+  color: var(--danger);
+}
+
+.subagent-derived .subagent-run-retry {
+  margin-top: 6px;
+  padding: 3px 9px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: var(--text-xs);
+  color: var(--text);
+  background: var(--panel-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.subagent-derived .subagent-run-retry:hover {
+  background: var(--purple-soft);
+}
+
+/* Sidebar resize handle ------------------------------------------------------ */
+
+.sidebar-resize-handle {
+  width: 6px;
+  cursor: col-resize;
+  background: transparent;
+  border-inline-start: 1px solid var(--line-soft);
+  touch-action: none;
+}
+
+.sidebar-resize-handle:hover {
+  background: var(--purple-soft);
+}
+
+/* While a drag is live: no accidental text selection anywhere. */
+.app-shell.is-resizing {
+  cursor: col-resize;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
