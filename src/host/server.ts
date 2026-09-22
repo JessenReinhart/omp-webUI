@@ -1,5 +1,5 @@
-import { existsSync } from "node:fs";
-import { basename, extname, join, normalize, relative, resolve } from "node:path";
+import { existsSync, mkdirSync, readdirSync, statSync } from "node:fs";
+import { basename, dirname, extname, join, normalize, relative, resolve } from "node:path";
 import {
   buildSkillPromptMessage,
   discoverSlashCommands,
@@ -13,6 +13,7 @@ import { expandSlashCommand } from "@oh-my-pi/pi-coding-agent/extensibility/slas
 import { AgentRegistry } from "@oh-my-pi/pi-coding-agent/registry/agent-registry";
 import { computeDefaultSessionDir } from "@oh-my-pi/pi-coding-agent/session/session-paths";
 import { broadcastSnapshot, getEventRing, getWebUiRuntime, isCursorReplayable, subscribeStream } from "../extension/index";
+import { getWorkspaceChanges, getWorkspaceDiff, getWorkspaceFile, getWorkspaceTree } from "./workspace";
 
 const HOST = "127.0.0.1";
 const FIRST_PORT = 4380;
@@ -259,14 +260,40 @@ async function executeCommand(text: string): Promise<{ message: string; refresh?
   throw new UserCommandError(`/${name} is not available in the web UI yet.`);
 }
 export function resolveSessionFile(fileId: string | null): string | null {
-  if (!fileId || !fileId.endsWith(".jsonl") || fileId.includes("/") || fileId.includes("\\") || fileId.includes("..")) {
+  if (!fileId || fileId.includes("..") || !fileId.endsWith(".jsonl")) {
     return null;
   }
   const cwd = getWebUiRuntime()?.ctx?.cwd ?? process.cwd();
   const storage = new FileSessionStorage();
-  const sessionDir = computeDefaultSessionDir(cwd, storage);
-  const filePath = resolve(sessionDir, fileId);
-  return filePath.startsWith(sessionDir) ? filePath : null;
+  const currentSessionDir = computeDefaultSessionDir(cwd, storage);
+  const baseSessionsDir = dirname(currentSessionDir);
+
+  const directPath = resolve(baseSessionsDir, fileId.replace(/\\/g, "/"));
+  if (directPath.startsWith(baseSessionsDir) && existsSync(directPath)) {
+    return directPath;
+  }
+
+  const currentPath = resolve(currentSessionDir, basename(fileId));
+  if (currentPath.startsWith(currentSessionDir) && existsSync(currentPath)) {
+    return currentPath;
+  }
+
+  try {
+    const entries = readdirSync(baseSessionsDir, { withFileTypes: true });
+    const target = basename(fileId);
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        const candidate = resolve(baseSessionsDir, entry.name, target);
+        if (candidate.startsWith(baseSessionsDir) && existsSync(candidate)) {
+          return candidate;
+        }
+      }
+    }
+  } catch {
+    // Ignore read errors
+  }
+
+  return null;
 }
 
 async function handler(request: Request, token: string): Promise<Response> {
@@ -308,19 +335,81 @@ async function handler(request: Request, token: string): Promise<Response> {
     try {
       const cwd = getWebUiRuntime()?.ctx?.cwd ?? process.cwd();
       const storage = new FileSessionStorage();
-      const sessionDir = computeDefaultSessionDir(cwd, storage);
-      const sessions = await listSessions(sessionDir, storage);
-      const mapped = sessions.map((s) => ({
-        id: s.id,
-        title: s.title || s.firstMessage || s.id,
-        cwd: s.cwd,
-        created: s.created,
-        modified: s.modified,
-        messageCount: s.messageCount,
-        fileId: basename(s.path),
-        path: s.path,
-      }));
-      return json({ ok: true, sessions: mapped });
+      const currentSessionDir = computeDefaultSessionDir(cwd, storage);
+      const baseSessionsDir = dirname(currentSessionDir);
+
+      let entries: Array<{ name: string; isDirectory(): boolean }> = [];
+      try {
+        if (existsSync(baseSessionsDir)) {
+          entries = readdirSync(baseSessionsDir, { withFileTypes: true });
+        }
+      } catch {
+        entries = [];
+      }
+      const subdirs = entries.filter((d) => d.isDirectory());
+
+      const workspaceResults = await Promise.all(
+        subdirs.map(async (d) => {
+          try {
+            const dirPath = resolve(baseSessionsDir, d.name);
+            const wsSessions = await listSessions(dirPath, storage);
+            if (!wsSessions || wsSessions.length === 0) return null;
+
+            const wsCwd = wsSessions[0]?.cwd || "";
+            const wsName = wsCwd ? basename(wsCwd.replace(/[\\/]+$/, "")) : d.name;
+            const isCurrent = normalize(dirPath).toLowerCase() === normalize(currentSessionDir).toLowerCase();
+            const mappedSessions = wsSessions.map((s) => ({
+              id: s.id,
+              title: s.title || s.firstMessage || s.id,
+              cwd: s.cwd,
+              created: s.created,
+              modified: s.modified,
+              messageCount: s.messageCount,
+              fileId: `${d.name}/${basename(s.path)}`,
+              path: s.path,
+            }));
+
+            return {
+              id: d.name,
+              name: wsName,
+              cwd: wsCwd,
+              isCurrent,
+              sessions: mappedSessions,
+            };
+          } catch {
+            return null;
+          }
+        }),
+      );
+
+      const workspaces = workspaceResults.filter((w): w is NonNullable<typeof w> => w !== null);
+
+      workspaces.sort((a, b) => {
+        if (a.isCurrent && !b.isCurrent) return -1;
+        if (!a.isCurrent && b.isCurrent) return 1;
+
+        const aTime = a.sessions.reduce((max, s) => {
+          const t = s.modified ? new Date(s.modified).getTime() : 0;
+          return !Number.isNaN(t) && t > max ? t : max;
+        }, 0);
+
+        const bTime = b.sessions.reduce((max, s) => {
+          const t = s.modified ? new Date(s.modified).getTime() : 0;
+          return !Number.isNaN(t) && t > max ? t : max;
+        }, 0);
+
+        return bTime - aTime;
+      });
+
+      const currentWs = workspaces.find((w) => w.isCurrent);
+      const sessions = currentWs?.sessions ?? [];
+
+      return json({
+        ok: true,
+        workspaces,
+        sessions,
+        currentWorkspace: currentWs?.name || basename(cwd),
+      });
     } catch (error) {
       return json({ error: error instanceof Error ? error.message : String(error) }, 500);
     }
@@ -359,6 +448,195 @@ async function handler(request: Request, token: string): Promise<Response> {
       return json({ ok: true, files: await searchWorkspaceFiles(query) });
     } catch (error) {
       return json({ error: commandError(error) }, 503);
+    }
+  }
+
+  if (url.pathname === "/api/workspace/tree" && request.method === "GET") {
+    if (!isAuthorized(url, token)) return json({ error: "unauthorized" }, 401);
+    try {
+      const runtime = getWebUiRuntime();
+      const cwd = runtime?.ctx?.cwd ?? process.cwd();
+      const subPath = url.searchParams.get("path") ?? undefined;
+      const result = getWorkspaceTree(cwd, subPath);
+      return json({ ok: true, ...result });
+    } catch (error) {
+      return json({ ok: false, error: error instanceof Error ? error.message : "Failed to load workspace tree" }, 400);
+    }
+  }
+
+  if (url.pathname === "/api/workspace/file" && request.method === "GET") {
+    if (!isAuthorized(url, token)) return json({ error: "unauthorized" }, 401);
+    try {
+      const runtime = getWebUiRuntime();
+      const cwd = runtime?.ctx?.cwd ?? process.cwd();
+      const filePath = url.searchParams.get("path");
+      if (!filePath) return json({ ok: false, error: "Missing path parameter" }, 400);
+      const result = getWorkspaceFile(cwd, filePath);
+      return json({ ok: true, ...result });
+    } catch (error) {
+      return json({ ok: false, error: error instanceof Error ? error.message : "Failed to load workspace file" }, 400);
+    }
+  }
+
+  if (url.pathname === "/api/workspace/changes" && request.method === "GET") {
+    if (!isAuthorized(url, token)) return json({ error: "unauthorized" }, 401);
+    try {
+      const runtime = getWebUiRuntime();
+      const cwd = runtime?.ctx?.cwd ?? process.cwd();
+      const result = getWorkspaceChanges(cwd);
+      return json({ ok: true, ...result });
+    } catch (error) {
+      return json({ ok: false, error: error instanceof Error ? error.message : "Failed to load workspace changes" }, 500);
+    }
+  }
+
+  if (url.pathname === "/api/workspace/diff" && request.method === "GET") {
+    if (!isAuthorized(url, token)) return json({ error: "unauthorized" }, 401);
+    try {
+      const runtime = getWebUiRuntime();
+      const cwd = runtime?.ctx?.cwd ?? process.cwd();
+      const filePath = url.searchParams.get("path") ?? undefined;
+      const staged = url.searchParams.get("staged") === "true";
+      const result = getWorkspaceDiff(cwd, filePath, staged);
+      return json({ ok: true, ...result });
+    } catch (error) {
+      return json({ ok: false, error: error instanceof Error ? error.message : "Failed to load workspace diff" }, 400);
+    }
+  }
+
+  // GET /api/workspaces/browse — list directories for workspace autocomplete/picking
+  if (url.pathname === "/api/workspaces/browse") {
+    if (!isAuthorized(url, token)) return json({ error: "unauthorized" }, 401);
+
+    try {
+      const runtime = getWebUiRuntime();
+      const currentCwd = runtime?.ctx?.cwd ?? process.cwd();
+      const requestedPath = url.searchParams.get("path")?.trim() || "";
+      const targetDir = requestedPath ? resolve(requestedPath) : dirname(currentCwd);
+
+      if (!existsSync(targetDir)) {
+        return json({ ok: false, error: "Directory does not exist" }, 404);
+      }
+
+      const entries = readdirSync(targetDir, { withFileTypes: true });
+      const dirs = entries
+        .filter((d) => d.isDirectory() && !d.name.startsWith("."))
+        .slice(0, 30)
+        .map((d) => ({
+          name: d.name,
+          path: join(targetDir, d.name),
+        }));
+
+      return json({
+        ok: true,
+        parent: dirname(targetDir),
+        current: targetDir,
+        directories: dirs,
+      });
+    } catch (error) {
+      return json({ error: error instanceof Error ? error.message : String(error) }, 500);
+    }
+  }
+
+  // POST /api/workspaces/add — add and switch to a workspace directory
+  if (url.pathname === "/api/workspaces/add") {
+    if (request.method !== "POST") return json({ error: "Method not allowed" }, 405);
+    if (!isAuthorized(url, token)) return json({ error: "unauthorized" }, 401);
+
+    try {
+      const body = (await request.json()) as { path?: unknown; createIfMissing?: unknown; startFresh?: unknown };
+      if (typeof body.path !== "string" || !body.path.trim()) {
+        return json({ error: "Directory path is required" }, 400);
+      }
+
+      const inputPath = body.path.trim();
+      const resolvedPath = resolve(inputPath);
+
+      let exists = false;
+      let isDir = false;
+      try {
+        const st = statSync(resolvedPath);
+        exists = true;
+        isDir = st.isDirectory();
+      } catch {
+        exists = false;
+      }
+
+      if (exists && !isDir) {
+        return json({ error: `Path exists but is not a directory: ${resolvedPath}` }, 400);
+      }
+
+      if (!exists) {
+        if (body.createIfMissing) {
+          mkdirSync(resolvedPath, { recursive: true });
+        } else {
+          return json({
+            error: `Directory does not exist: ${resolvedPath}`,
+            notFound: true,
+            path: resolvedPath,
+          }, 404);
+        }
+      }
+
+      const runtime = getWebUiRuntime();
+      if (!runtime?.ctx) return json({ error: "No active OMP session runtime" }, 503);
+
+      const storage = new FileSessionStorage();
+      computeDefaultSessionDir(resolvedPath, storage);
+
+      // Relocate the live session to the new workspace directory. Access
+      // sessionManager/session via a structural cast because the extension
+      // context type does not expose the AgentSession's moveSession surface.
+      const ctxAny = runtime.ctx as unknown as {
+        session?: { moveSession?: (dir: string) => Promise<void> };
+        sessionManager?: { moveTo?: (dir: string) => Promise<void> };
+        applyCwdChange?: (dir: string) => Promise<boolean>;
+      };
+      if (ctxAny.session && typeof ctxAny.session.moveSession === "function") {
+        await ctxAny.session.moveSession(resolvedPath);
+      } else if (ctxAny.sessionManager && typeof ctxAny.sessionManager.moveTo === "function") {
+        await ctxAny.sessionManager.moveTo(resolvedPath);
+      }
+      if (typeof ctxAny.applyCwdChange === "function") {
+        await ctxAny.applyCwdChange(resolvedPath);
+      }
+
+      if (body.startFresh !== false) {
+        await runtime.ctx.newSession();
+      }
+
+      broadcastSnapshot();
+
+      const wsName = basename(resolvedPath.replace(/[\\/]+$/, "")) || resolvedPath;
+
+      return json({
+        ok: true,
+        workspace: {
+          name: wsName,
+          cwd: resolvedPath,
+        },
+      });
+    } catch (error) {
+      return json({ error: error instanceof Error ? error.message : String(error) }, 500);
+    }
+  }
+
+  // POST /api/sessions/new — start a fresh session in the active runtime.
+  if (url.pathname === "/api/sessions/new") {
+    if (request.method !== "POST") return json({ error: "Method not allowed" }, 405);
+    if (!isAuthorized(url, token)) return json({ error: "unauthorized" }, 401);
+
+    try {
+      const runtime = getWebUiRuntime();
+      if (!runtime?.ctx) return json({ error: "No active OMP session runtime" }, 503);
+
+      const result = await runtime.ctx.newSession();
+      if (result.cancelled) return json({ error: "New session was cancelled" }, 409);
+
+      broadcastSnapshot();
+      return json({ ok: true, message: "Started a new session." });
+    } catch (error) {
+      return json({ error: error instanceof Error ? error.message : String(error) }, 500);
     }
   }
 
