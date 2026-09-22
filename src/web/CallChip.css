@@ -3,13 +3,13 @@
   --cc-font: 13px;
   --cc-pad: 12px;
   --cc-gap: 7px;
-  --cc-radius: 10px;
-  --cc-color: currentColor;
-  --cc-surface: #27272a;
-  --cc-progress: currentColor;
-  --cc-progress-pct: 8%;
-  --cc-done: #22c55e;
-  --cc-error: #ef4444;
+  --cc-radius: var(--radius-sm, 8px);
+  --cc-color: var(--text, currentColor);
+  --cc-surface: var(--panel-2, #121522);
+  --cc-progress: var(--purple, #b85cff);
+  --cc-progress-pct: 10%;
+  --cc-done: var(--green, #3ad98d);
+  --cc-error: var(--danger, #ff8f85);
   --cc-wash-pct: 14%;
   --cc-expected: 2500ms;
   --cc-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
@@ -21,7 +21,7 @@
   box-sizing: border-box;
   height: var(--cc-size);
   padding: 0 var(--cc-pad);
-  border: 1px solid rgba(82, 65, 140, 0.08);
+  border: 1px solid var(--line, #23283c);
   border-radius: var(--cc-radius);
   overflow: hidden;
   background: var(--cc-surface);
@@ -34,7 +34,7 @@
   -webkit-touch-callout: none;
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  box-shadow: 0 2px 8px rgba(71, 55, 125, 0.04), inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
   transition: transform 160ms var(--cc-ease-out), border-color 160ms ease, box-shadow 160ms ease;
 }
 
@@ -44,8 +44,8 @@
 }
 
 .call-chip[data-clickable]:hover {
-  border-color: rgba(108, 88, 237, 0.22);
-  box-shadow: 0 4px 12px rgba(108, 88, 237, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  border-color: var(--purple, #b85cff);
+  box-shadow: 0 4px 12px var(--purple-soft, rgba(184, 92, 255, 0.15));
 }
 
 .call-chip[data-pressed] {

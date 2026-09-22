@@ -4,10 +4,10 @@
   --ll-gap: 2px;
   --ll-font: 14px;
   --ll-color: currentColor;
-  --ll-mark: #22c55e;
+  --ll-mark: var(--green, #22c55e);
   --ll-idle: 0.15;
   --ll-glow: currentColor;
-  --ll-mark-glow: #22c55e;
+  --ll-mark-glow: var(--green, #22c55e);
   --ll-peak: 1;
   --ll-cycle: 864ms;
   --ll-ease-out: cubic-bezier(0.23, 1, 0.32, 1);

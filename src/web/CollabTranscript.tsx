@@ -179,11 +179,11 @@ export function CollabTranscript({
               argument={tool.detail ?? ""}
               icon={iconType}
               status={chipStatus}
-              surfaceColor="rgba(244, 243, 248, 0.75)"
+              surfaceColor="var(--panel-2)"
               color="inherit"
-              progressColor="#6c58ed"
-              doneColor="#16a34a"
-              errorColor="#dc2626"
+              progressColor="var(--purple)"
+              doneColor="var(--green)"
+              errorColor="var(--danger)"
               showTimer
             />
           </div>
@@ -210,7 +210,7 @@ export function CollabTranscript({
             step={90}
             idleOpacity={0.2}
             glow
-            glowColor="#6c58ed"
+            glowColor="var(--purple)"
             color="currentColor"
             showTimer
           />
