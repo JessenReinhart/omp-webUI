@@ -209,6 +209,8 @@ export interface CollabComposerProps {
   placeholder?: string;
   isStreaming?: boolean;
   commands?: import("./commandTypes").CommandOption[];
+  pendingAttachments?: WorkspaceAttachment[];
+  initialDraft?: string;
   onSend(text: string, attachments?: ComposerAttachment[]): void | Promise<void>;
   onCommand?(text: string): string | void | Promise<string | void>;
   onSearchFiles?(query: string): Promise<WorkspaceAttachment[]>;

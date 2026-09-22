@@ -217,16 +217,18 @@ export function useLocalSession(): UseCollabSessionReturn {
         const lastCommittedAt = committedLastTimestamp(frame.entries);
         const committedKeys = committedMessageKeys(frame.entries);
         setEvents((previous) =>
-          previous.filter((event) => {
-            if (isMessageAgentEvent(event)) {
-              const key = messageCommitKey(event.message);
-              if (key === null || committedKeys.has(key)) return false;
-              const timestamp = event.message.timestamp;
-              return typeof timestamp === "number" && timestamp > lastCommittedAt;
-            }
-            if (isToolAgentEvent(event)) return !settledTools.has(event.toolCallId);
-            return true;
-          }),
+          frame.entries.length === 0
+            ? []
+            : previous.filter((event) => {
+                if (isMessageAgentEvent(event)) {
+                  const key = messageCommitKey(event.message);
+                  if (key === null || committedKeys.has(key)) return false;
+                  const timestamp = event.message.timestamp;
+                  return typeof timestamp === "number" && timestamp > lastCommittedAt;
+                }
+                if (isToolAgentEvent(event)) return !settledTools.has(event.toolCallId);
+                return true;
+              }),
         );
         setState(frame.state);
         setAgents(frame.agents);

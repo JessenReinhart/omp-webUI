@@ -67,6 +67,71 @@
   --transition-normal: 0.18s cubic-bezier(0.2, 0, 0, 1);
 }
 
+/* Light Theme Tokens */
+:root[data-theme="light"],
+.theme-light {
+  --bg: #f4f3f7;
+  --panel: #ffffff;
+  --panel-2: #f0eff6;
+  --panel-3: #e6e4f0;
+  --panel-hover: #e2e0ed;
+
+  --line: #dcd8ea;
+  --line-soft: #e7e4f2;
+  --line-focus: #7a3ee6;
+
+  --text: #1d1b26;
+  --muted: #6b667e;
+  --faint: #928ca6;
+
+  --purple: #7a3ee6;
+  --purple-2: #652fcf;
+  --purple-soft: rgba(122, 62, 230, 0.12);
+  --purple-glow: rgba(122, 62, 230, 0.22);
+
+  --green: #1a9e62;
+  --green-soft: rgba(26, 158, 98, 0.12);
+
+  --amber: #c47600;
+  --amber-soft: rgba(196, 118, 0, 0.12);
+
+  --danger: #cf3838;
+  --danger-strong: #b82b2b;
+  --danger-soft: rgba(207, 56, 56, 0.12);
+
+  --blue: #2a6ee8;
+}
+
+/* Global Theme Transition Smoothness - scoped to layout surfaces */
+.theme-transitioning,
+.theme-transitioning body,
+.theme-transitioning .app-shell,
+.theme-transitioning .session-sidebar,
+.theme-transitioning .main-column,
+.theme-transitioning .topbar,
+.theme-transitioning .subagents-panel,
+.theme-transitioning .conversation,
+.theme-transitioning .composer-dock,
+.theme-transitioning .composer,
+.theme-transitioning .command-palette,
+.theme-transitioning .collab-message,
+.theme-transitioning .transcript-action-row,
+.theme-transitioning .tool-drawer,
+.theme-transitioning .tool-drawer-bar,
+.theme-transitioning .session-row,
+.theme-transitioning .sidebar-tab,
+.theme-transitioning .icon-button,
+.theme-transitioning .button-ghost,
+.theme-transitioning .status-chip,
+.theme-transitioning .model-chip,
+.theme-transitioning .call-chip {
+  transition:
+    background-color 260ms cubic-bezier(0.16, 1, 0.3, 1),
+    border-color 260ms cubic-bezier(0.16, 1, 0.3, 1),
+    color 260ms cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 260ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
 /* Base Resets */
 *, *::before, *::after {
   box-sizing: border-box;
@@ -138,10 +203,30 @@ code, pre {
   overflow: hidden;
 }
 
+.app-shell.sidebar-is-collapsed {
+  grid-template-columns: 0px 0px minmax(0, 1fr);
+}
+
+.app-shell.sidebar-is-collapsed .session-sidebar {
+  display: none !important;
+}
+
+.app-shell.sidebar-is-collapsed .sidebar-resize-handle {
+  display: none !important;
+}
+
+.app-shell.sidebar-is-collapsed .nav-trigger {
+  display: inline-flex !important;
+}
+
 /* Agents panel docked at desktop width, only while open; hidden when closed. */
 @media (min-width: 1201px) {
   .app-shell.agents-is-open {
     grid-template-columns: var(--sidebar-w) 6px minmax(0, 1fr) var(--agents-w);
+  }
+
+  .app-shell.sidebar-is-collapsed.agents-is-open {
+    grid-template-columns: 0px 0px minmax(0, 1fr) var(--agents-w);
   }
 
   .app-shell:not(.agents-is-open) .subagents-panel {
@@ -180,11 +265,47 @@ code, pre {
 .sidebar-heading {
   display: flex;
   align-items: center;
-  gap: 10px;
+  justify-content: space-between;
+  gap: 8px;
   height: var(--topbar-h);
-  padding: 0 16px;
+  padding: 0 12px 0 16px;
   border-bottom: 1px solid var(--line);
   flex-shrink: 0;
+  min-width: 0;
+}
+
+.sidebar-heading-start {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex: 1;
+}
+
+.sidebar-heading-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.sidebar-collapse-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: color var(--transition-fast), background var(--transition-fast);
+}
+
+.sidebar-collapse-btn:hover {
+  color: var(--text);
+  background: var(--panel-hover);
 }
 
 .omp-mark {
@@ -217,16 +338,83 @@ code, pre {
   font-weight: 600;
 }
 
+.sidebar-heading-title,
 .sidebar-heading-copy strong {
   font-size: var(--text-sm);
   color: var(--text);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  min-width: 0;
 }
 
 .sidebar-close {
   display: none; /* Shown on mobile drawers */
+}
+
+/* Sidebar Navigation Tabs (Sessions / Files / Changes) */
+.sidebar-tabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--line-soft);
+  background: var(--panel);
+  flex-shrink: 0;
+  min-width: 0;
+}
+
+.sidebar-tab {
+  flex: 1 1 0;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid transparent;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color var(--transition-fast), background var(--transition-fast), border-color var(--transition-fast);
+}
+
+.sidebar-tab-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.sidebar-tab:hover {
+  color: var(--text);
+  background: var(--panel-hover);
+}
+
+.sidebar-tab.is-active {
+  color: var(--purple);
+  background: var(--panel-2);
+  border-color: var(--line-soft);
+  font-weight: 600;
+}
+
+.sidebar-tab-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  background: var(--purple);
+  color: #ffffff;
+  line-height: 1;
 }
 
 .session-nav {
@@ -234,17 +422,19 @@ code, pre {
   flex-direction: column;
   flex: 1;
   min-height: 0;
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 /* Session List Component Styling */
 .session-list-wrapper {
   display: flex;
   flex-direction: column;
-  flex: 1;
   min-height: 0;
+  width: 100%;
   padding: 12px 10px;
   gap: 14px;
+  box-sizing: border-box;
 }
 
 .session-group-label {
@@ -264,9 +454,8 @@ code, pre {
 .session-list {
   display: flex;
   flex-direction: column;
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
+  width: 100%;
+  min-width: 0;
 }
 
 .session-list-header {
@@ -303,6 +492,8 @@ code, pre {
   color: var(--muted);
   text-align: left;
   transition: background var(--transition-fast), color var(--transition-fast);
+  min-width: 0;
+  overflow: hidden;
 }
 
 .session-row:hover {
@@ -334,6 +525,16 @@ code, pre {
   flex-direction: column;
   min-width: 0;
   flex: 1;
+  overflow: hidden;
+}
+
+.session-copy p {
+  margin: 2px 0 0;
+  font-size: var(--text-xs);
+  color: var(--faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .session-title-line {
@@ -452,7 +653,7 @@ code, pre {
   gap: 12px;
   padding: 0 18px;
   border-bottom: 1px solid var(--line);
-  background: rgba(13, 15, 25, 0.85);
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
   backdrop-filter: blur(8px);
   z-index: 10;
 }
@@ -895,11 +1096,11 @@ code, pre {
 .tool-drawer {
   width: min(760px, 100%);
   margin-top: 2px;
-  border: 1px solid rgba(108, 88, 237, 0.12);
+  border: 1px solid var(--line);
   border-radius: 14px;
-  background: rgba(255, 255, 255, 0.92);
+  background: var(--panel);
   overflow: hidden;
-  box-shadow: 0 10px 30px rgba(71, 55, 125, 0.08), inset 0 1px 0 #fff;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   animation: tool-drawer-slide 200ms cubic-bezier(0.23, 1, 0.32, 1);
@@ -921,8 +1122,8 @@ code, pre {
   align-items: center;
   justify-content: space-between;
   padding: 6px 12px;
-  background: rgba(247, 245, 253, 0.65);
-  border-bottom: 1px solid rgba(82, 65, 140, 0.08);
+  background: var(--panel-2);
+  border-bottom: 1px solid var(--line);
 }
 
 .tool-drawer-tabs {
@@ -936,7 +1137,7 @@ code, pre {
   border: 1px solid transparent;
   border-radius: 999px;
   background: transparent;
-  color: #7b7588;
+  color: var(--muted);
   font-size: 11px;
   font-weight: 600;
   letter-spacing: -0.01em;
@@ -945,14 +1146,14 @@ code, pre {
 }
 
 .tool-drawer-tab:hover {
-  color: #4a4455;
-  background: rgba(108, 88, 237, 0.05);
+  color: var(--text);
+  background: var(--purple-soft);
 }
 
 .tool-drawer-tab.is-active {
-  background: #6c58ed;
+  background: var(--purple);
   color: #fff;
-  box-shadow: 0 2px 8px rgba(108, 88, 237, 0.28);
+  box-shadow: 0 2px 8px var(--purple-glow);
 }
 
 .tool-drawer-copy-btn {
@@ -960,10 +1161,10 @@ code, pre {
   align-items: center;
   gap: 5px;
   padding: 4px 9px;
-  border: 1px solid rgba(82, 65, 140, 0.1);
+  border: 1px solid var(--line);
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.8);
-  color: #7b7588;
+  background: var(--panel-2);
+  color: var(--muted);
   font-size: 11px;
   font-weight: 500;
   cursor: pointer;
@@ -971,10 +1172,10 @@ code, pre {
 }
 
 .tool-drawer-copy-btn:hover {
-  color: #3b3547;
-  border-color: rgba(108, 88, 237, 0.3);
-  background: #fff;
-  box-shadow: 0 2px 6px rgba(108, 88, 237, 0.08);
+  color: var(--text);
+  border-color: var(--purple);
+  background: var(--panel-hover);
+  box-shadow: 0 2px 6px var(--purple-soft);
 }
 
 .tool-drawer-body {
@@ -987,8 +1188,8 @@ code, pre {
   padding: 10px 14px;
   border: none;
   border-radius: 0;
-  background: #faf9fd;
-  color: #433d4e;
+  background: var(--bg);
+  color: var(--text);
   font-size: 12px;
   line-height: 1.6;
 }
@@ -2263,21 +2464,357 @@ code, pre {
 /* Sidebar resize handle ------------------------------------------------------ */
 
 .sidebar-resize-handle {
+  position: relative;
   width: 6px;
   cursor: col-resize;
   background: transparent;
   border-inline-start: 1px solid var(--line-soft);
   touch-action: none;
+  z-index: 50;
+  transition: background var(--transition-fast);
 }
 
-.sidebar-resize-handle:hover {
-  background: var(--purple-soft);
-}
-
-/* While a drag is live: no accidental text selection anywhere. */
-.app-shell.is-resizing {
+.sidebar-resize-handle::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -4px;
+  right: -4px;
+  z-index: 10;
   cursor: col-resize;
-  user-select: none;
-  -webkit-user-select: none;
+}
+
+.sidebar-resize-handle:hover,
+.app-shell.is-resizing .sidebar-resize-handle {
+  background: var(--purple);
+  box-shadow: 0 0 8px rgba(184, 92, 255, 0.4);
+}
+
+
+.workspaces-action-btn,
+.ws-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0;
+  transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
+}
+
+.workspaces-action-btn:hover,
+.ws-action-btn:hover {
+  background: var(--panel-2);
+  color: var(--text);
+  border-color: var(--line-soft);
+}
+
+.workspaces-action-btn.is-active,
+.ws-action-btn.is-active {
+  background: var(--panel-3);
+  color: var(--purple);
+  border-color: var(--purple-soft);
+}
+
+.ws-action-btn-accent:hover {
+  color: var(--purple) !important;
+  border-color: rgba(184, 92, 255, 0.3) !important;
+  background: var(--purple-soft) !important;
+}
+
+/* Dropdown Menu for Sort & Filter */
+.workspaces-sort-popover,
+.ws-dropdown-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 170px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  padding: 6px;
+  z-index: 120;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ws-dropdown-section {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ws-dropdown-label {
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--faint);
+  padding: 4px 8px 2px;
+}
+
+.ws-dropdown-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 6px 8px;
+  font-size: var(--text-xs);
+  color: var(--muted);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.ws-dropdown-item:hover {
+  background: var(--panel-hover);
+  color: var(--text);
+}
+
+.ws-dropdown-item.is-selected {
+  background: var(--panel-2);
+  color: var(--purple);
+  font-weight: 600;
+}
+
+.ws-dropdown-divider {
+  height: 1px;
+  background: var(--line-soft);
+  margin: 2px 4px;
+}
+
+/* Search Bar */
+.workspaces-search-box,
+.ws-search-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  margin-top: 4px;
+  margin-bottom: 4px;
+  transition: border-color var(--transition-fast);
+}
+
+.workspaces-search-box:focus-within,
+.ws-search-bar:focus-within {
+  border-color: var(--purple);
+}
+
+.ws-search-icon {
+  color: var(--faint);
+  flex-shrink: 0;
+}
+
+.workspaces-search-input,
+.ws-search-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text);
+  font-size: var(--text-xs);
+  min-width: 0;
+}
+
+.ws-search-clear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: var(--faint);
+  cursor: pointer;
+  padding: 2px;
+}
+
+.ws-search-clear:hover {
+  color: var(--text);
+}
+
+/* Workspace Groups & Sessions Tree */
+.workspaces-container,
+.ws-groups-container {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+}
+
+.workspace-group,
+.ws-group {
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  border: 1px solid var(--line-soft);
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.workspace-group-header,
+.ws-header-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 7px 8px;
+  background: var(--panel-2);
+  border: none;
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+  font-size: var(--text-xs);
+  transition: background var(--transition-fast);
+}
+
+.workspace-group-header:hover,
+.ws-header-row:hover {
+  background: var(--panel-hover);
+}
+
+.ws-header-arrow {
+  display: inline-flex;
+  align-items: center;
+  color: var(--faint);
+  flex-shrink: 0;
+}
+
+.ws-folder-icon {
+  display: inline-flex;
+  align-items: center;
+  color: var(--purple);
+  flex-shrink: 0;
+}
+
+.workspace-group-title,
+.ws-header-name {
+  flex: 1;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ws-header-count {
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: var(--faint);
+  background: var(--panel-3);
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--line-soft);
+}
+
+.workspace-session-list,
+.ws-sessions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 4px 6px 12px;
+  background: transparent;
+}
+
+.ws-empty-sessions {
+  padding: 8px 10px;
+  font-size: 0.7rem;
+  color: var(--faint);
+  font-style: italic;
+}
+
+.workspace-session-item,
+.ws-session-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--muted);
+  font-size: var(--text-xs);
+  cursor: pointer;
+  text-align: left;
+  transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
+}
+
+.workspace-session-item:hover,
+.ws-session-row:hover {
+  background: var(--panel-hover);
+  color: var(--text);
+  border-color: var(--line-soft);
+}
+
+.workspace-session-item.is-selected,
+.workspace-session-item.active,
+.ws-session-row.is-selected,
+.ws-session-row.active {
+  background: var(--panel-3);
+  color: var(--text);
+  border-color: var(--purple-soft);
+  font-weight: 500;
+}
+
+.workspace-session-title,
+.ws-session-title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspace-session-time,
+.ws-session-time {
+  font-size: 0.65rem;
+  color: var(--faint);
+  flex-shrink: 0;
+}
+
+.workspace-show-more-btn,
+.ws-show-more-btn {
+  display: block;
+  width: 100%;
+  padding: 5px 8px;
+  font-size: 0.68rem;
+  color: var(--purple);
+  background: transparent;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  text-align: center;
+  margin-top: 4px;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+
+.workspace-show-more-btn:hover,
+.ws-show-more-btn:hover {
+  background: var(--purple-soft);
+  border-color: var(--purple);
+}
+
+/* Modal and Drawer Theme Overrides */
+:root[data-theme="light"] .file-diff-viewer-overlay,
+:root[data-theme="light"] .add-workspace-overlay {
+  background: rgba(30, 25, 45, 0.5);
+}
+
+:root[data-theme="light"] .file-diff-viewer-modal,
+:root[data-theme="light"] .add-workspace-modal {
+  box-shadow: 0 20px 50px rgba(71, 55, 125, 0.18);
 }
 

@@ -46,6 +46,8 @@ export function CollabComposer({
   placeholder = "Message OMP...",
   isStreaming = false,
   commands = [],
+  pendingAttachments,
+  initialDraft,
   onSend,
   onCommand,
   onSearchFiles,
@@ -68,6 +70,26 @@ export function CollabComposer({
   const trimmedDraft = draft.trim();
   const isCommandDraft = draft.startsWith("/") && !draft.includes("\n");
   const canSend = !disabled && !isSending && (trimmedDraft.length > 0 || attachments.length > 0) && (!isStreaming || isCommandDraft);
+
+  useEffect(() => {
+    if (!pendingAttachments || pendingAttachments.length === 0) return;
+    setAttachments((current) => {
+      const updated = [...current];
+      for (const att of pendingAttachments) {
+        if (!updated.some((item) => attachmentKey(item) === attachmentKey(att))) {
+          updated.push(att);
+        }
+      }
+      return updated.slice(0, 8);
+    });
+  }, [pendingAttachments]);
+
+  useEffect(() => {
+    if (initialDraft !== undefined && initialDraft !== null) {
+      setDraft(initialDraft);
+      textareaRef.current?.focus();
+    }
+  }, [initialDraft]);
 
   const visibleCommands = useMemo(() => {
     if (!isCommandDraft || paletteDismissed) return [];

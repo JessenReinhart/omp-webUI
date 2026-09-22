@@ -1,16 +1,19 @@
 import { Menu, PanelRightClose, PanelRightOpen, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AddWorkspaceModal } from "./AddWorkspaceModal";
 import { CollabComposer } from "./CollabComposer";
 import { CollabControls } from "./CollabControls";
 import { CollabTranscript } from "./CollabTranscript";
+import { FileDiffViewer } from "./FileDiffViewer";
 import { FullTranscriptViewer } from "./FullTranscriptViewer";
-import { SessionList } from "./SessionList";
+import { Sidebar } from "./Sidebar";
+import { ThemeToggle } from "./ThemeToggle";
 import { isRecord, type SessionEntry, type WorkspaceAttachment } from "./collabTypes";
 import { DEFAULT_COMMANDS, parseCommandCatalog, type CommandCatalog, type CommandOption } from "./commandTypes";
 import { FeatureProvider, useFeatureSelection } from "./featureStore";
 import { Slot } from "./plugin-system";
 import { useLocalSession } from "./useLocalSession";
-import { useResizableSidebar } from "./useResizableSidebar";
+import { useSidebar } from "./useSidebar";
 
 interface SessionHost {
   sessionName?: string;
@@ -75,15 +78,48 @@ export function App() {
   const [sessionNonce, setSessionNonce] = useState(0);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [agentsOpen, setAgentsOpen] = useState(false);
-  const { dragging, handleProps } = useResizableSidebar({
-    storageKey: "omp.webui.sidebar-width",
-    min: 200,
-    max: 420,
-    fallback: 290,
+  const {
+    dragging,
+    collapsed: sidebarCollapsed,
+    setCollapsed: setSidebarCollapsed,
+    toggleCollapse: toggleSidebarCollapse,
+    handleProps,
+  } = useSidebar({
+    storageKeyWidth: "omp.webui.sidebar-width",
+    storageKeyCollapsed: "omp.webui.sidebar-collapsed",
+    minWidth: 240,
+    maxWidth: 720,
+    fallbackWidth: 300,
   });
   const [commandCatalog, setCommandCatalog] = useState<CommandCatalog | null>(null);
   // Once the user explicitly opens/closes the agents panel, stop auto-opening it.
   const agentsTouchedRef = useRef(false);
+  const [sidebarTab, setSidebarTab] = useState<"sessions" | "files" | "changes">("sessions");
+  const [changesCount, setChangesCount] = useState<number>(0);
+  const [previewTarget, setPreviewTarget] = useState<{
+    type: "file" | "diff";
+    path: string;
+    staged?: boolean;
+  } | null>(null);
+  const [pendingAttachments, setPendingAttachments] = useState<WorkspaceAttachment[]>([]);
+  const [composerDraft, setComposerDraft] = useState<string | undefined>(undefined);
+  const [showAddWorkspace, setShowAddWorkspace] = useState<boolean>(false);
+
+  const handleAttachFile = useCallback((file: WorkspaceAttachment) => {
+    setPendingAttachments((prev) => [...prev, file]);
+  }, []);
+
+  const handlePromptReview = useCallback((files: string[]) => {
+    setComposerDraft("Please review the uncommitted changes in this workspace.");
+    setPendingAttachments((prev) => [
+      ...prev,
+      ...files.map((p) => ({
+        path: p,
+        name: p.split("/").pop() || p,
+        kind: "file" as const,
+      })),
+    ]);
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -196,7 +232,7 @@ export function App() {
     [authToken],
   );
 
-  const handleBackToLive = useCallback(() => {
+  const handleBackToLive = useCallback((keepSidebarOpen?: unknown) => {
     pastFetchAbortRef.current?.abort();
     pastFetchAbortRef.current = null;
     pastFetchSeqRef.current += 1;
@@ -205,7 +241,9 @@ export function App() {
     setPastEntries([]);
     setLoadingPast(false);
     setErrorPast(null);
-    setSidebarOpen(false);
+    if (keepSidebarOpen !== true) {
+      setSidebarOpen(false);
+    }
   }, []);
 
   const handleRetryPastSession = useCallback(() => {
@@ -253,6 +291,9 @@ export function App() {
   const connected = Boolean(session?.connected);
   const collab = useLocalSession();
   const features = useFeatureSelection(collab.entries, collab.events, collab.agents);
+  const workspaceRefreshNonce = useMemo(() => {
+    return collab.events.length + sessionNonce;
+  }, [collab.events.length, sessionNonce]);
   const host = session?.host;
   const currentTitle = host?.sessionName || "Current OMP session";
   const currentWorkspace = workspaceName(host?.cwd);
@@ -334,52 +375,84 @@ export function App() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [sidebarOpen, agentsOpen]);
 
+  const handleNewSession = useCallback(async () => {
+    try {
+      handleBackToLive(true);
+      const res = await fetch(`/api/sessions/new?token=${encodeURIComponent(authToken)}`, {
+        method: "POST",
+      });
+      if (!res.ok) {
+        await handleCommand("/new");
+      }
+      setSessionNonce((n) => n + 1);
+    } catch (err) {
+      console.error("Failed to start new session:", err);
+      try {
+        await handleCommand("/new");
+        setSessionNonce((n) => n + 1);
+      } catch (fallbackErr) {
+        console.error("Fallback /new also failed:", fallbackErr);
+      }
+    }
+  }, [authToken, handleCommand, handleBackToLive]);
+
+  const handleWorkspaceAdded = useCallback(
+    () => {
+      handleBackToLive(true);
+      setSessionNonce((n) => n + 1);
+      setSidebarTab("sessions");
+    },
+    [handleBackToLive],
+  );
+
   return (
     <FeatureProvider selection={features} agentsPanelOpen={agentsOpen}>
-    <div className={`app-shell${sidebarOpen ? " sidebar-is-open" : ""}${agentsOpen ? " agents-is-open" : ""}${dragging ? " is-resizing" : ""}`}>
-      <div className="sidebar-scrim" aria-hidden="true" onClick={() => setSidebarOpen(false)} />
-
-      <aside className="session-sidebar" aria-label="Session navigation">
-        <div className="sidebar-heading">
-          <OmpMark />
-          <div className="sidebar-heading-copy">
-            <span className="sidebar-heading-label">Workspace</span>
-            <strong title={host?.cwd || currentWorkspace}>{currentWorkspace}</strong>
-          </div>
-          <button
-            className="icon-button sidebar-close"
-            type="button"
-            onClick={() => setSidebarOpen(false)}
-            aria-label="Close session navigation"
-          >
-            <X size={18} aria-hidden="true" />
-          </button>
-        </div>
-
-        <Slot name="sidebar.top" />
-        <nav className="session-nav" aria-label="Current session">
-          <SessionList
-            token={authToken}
-            onSelectSession={handleSelectSession}
-            selectedFileId={pastSessionId}
-            onBackToLive={handleBackToLive}
-            liveTitle={currentTitle}
-            liveSubtitle={currentSubtitle}
-            liveActive={!pastSessionId}
-            connectionState={connected ? "connected" : "waiting"}
-          />
-        </nav>
-        <Slot name="sidebar.bottom" />
-      </aside>
-
-      <div className="sidebar-resize-handle" {...handleProps} />
+    <div
+      className={`app-shell${sidebarOpen ? " sidebar-is-open" : ""}${
+        sidebarCollapsed ? " sidebar-is-collapsed" : ""
+      }${agentsOpen ? " agents-is-open" : ""}${dragging ? " is-resizing" : ""}`}
+    >
+      <Sidebar
+        workspaceName={currentWorkspace}
+        workspacePath={host?.cwd}
+        authToken={authToken}
+        activeTab={sidebarTab}
+        onTabChange={setSidebarTab}
+        changesCount={changesCount}
+        mobileOpen={sidebarOpen}
+        onMobileClose={() => setSidebarOpen(false)}
+        collapsed={sidebarCollapsed}
+        onToggleCollapse={toggleSidebarCollapse}
+        handleProps={handleProps}
+        pastSessionId={pastSessionId}
+        currentTitle={currentTitle}
+        currentSubtitle={currentSubtitle}
+        connected={connected}
+        workspaceRefreshNonce={workspaceRefreshNonce}
+        onSelectSession={handleSelectSession}
+        onBackToLive={handleBackToLive}
+        onNewSession={handleNewSession}
+        onAddWorkspace={() => setShowAddWorkspace(true)}
+        onSelectFile={(path) => setPreviewTarget({ type: "file", path })}
+        onAttachFile={handleAttachFile}
+        onSelectDiff={(path, staged) => setPreviewTarget({ type: "diff", path, staged })}
+        onPromptReview={handlePromptReview}
+        onChangeCount={setChangesCount}
+      />
 
       <main className="main-column">
         <header className="topbar">
           <button
             className="icon-button nav-trigger"
             type="button"
-            onClick={() => setSidebarOpen(true)}
+            onClick={() => {
+              if (window.innerWidth <= 900) {
+                setSidebarOpen(true);
+              } else {
+                setSidebarCollapsed(false);
+              }
+            }}
+            title="Expand sidebar (Ctrl+B)"
             aria-label="Open session navigation"
           >
             <Menu size={18} aria-hidden="true" />
@@ -400,6 +473,7 @@ export function App() {
               onReconnect={collab.reconnect}
               onDisconnect={collab.disconnect}
             />
+            <ThemeToggle />
             {hasAgents ? (
               <button
                 className="icon-button agents-trigger"
@@ -506,6 +580,8 @@ export function App() {
               placeholder={connected ? "Message OMP..." : "Connect an OMP session to start chatting"}
               isStreaming={isStreaming}
               commands={commandOptions}
+              pendingAttachments={pendingAttachments}
+              initialDraft={composerDraft}
               onSend={collab.sendPrompt}
               onCommand={handleCommand}
               onSearchFiles={handleSearchFiles}
@@ -514,6 +590,22 @@ export function App() {
           ) : null}
         </section>
       </main>
+
+      {previewTarget ? (
+        <FileDiffViewer
+          token={authToken}
+          target={previewTarget}
+          onClose={() => setPreviewTarget(null)}
+          onAttachFile={handleAttachFile}
+        />
+      ) : null}
+
+      <AddWorkspaceModal
+        token={authToken}
+        isOpen={showAddWorkspace}
+        onClose={() => setShowAddWorkspace(false)}
+        onWorkspaceAdded={handleWorkspaceAdded}
+      />
 
       {hasAgents ? (
         <aside id="agents-panel" className="subagents-panel" aria-label="Agents" inert={!agentsOpen}>
