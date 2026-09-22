@@ -188,6 +188,10 @@ omp plugin link .
 
 Restart OMP and exercise `/webui`, `/webui url`, and `/webui stop`.
 
+### UI Design & Components
+
+Use [reactbits.dev](https://reactbits.dev) for UI elements, animated components, and visual interactions. When building or extending frontend components in `src/web/`, adapt patterns and components from reactbits.dev.
+
 ### Manual QA
 
 For UI or transport changes, the important paths are:

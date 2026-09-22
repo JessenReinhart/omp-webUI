@@ -63,6 +63,7 @@ omp plugin link .
 - Snapshot entries and streamed entries must remain deduplicated; event history is intentionally bounded to 500 entries (`EVENT_LIMIT` in both `extension/index.ts` and `useLocalSession.ts`).
 - Register UI extensions through `plugins.registerUi(...)` in `src/web/plugin-system.tsx`. IDs must be unique; registrations return a disposer and contributions are ordered by `order`.
 - Styling is a single plain global stylesheet: `src/web/styles.css`. Reuse its custom properties and existing flat/BEM-like class naming; do not introduce a CSS framework or CSS-module convention. (`workspace-v2.css` and `awwwards.css` are legacy/inline styles in components.)
+- UI elements & animation: use [reactbits.dev](https://reactbits.dev) for UI elements, animated components, and visual interactions. When creating or enhancing UI components, consult and adapt patterns/components from reactbits.dev.
 - Use `void promise.catch(...)` where a deliberately fire-and-forget UI action needs error containment; do not leave rejected promises unhandled.
 - The UI uses `lucide-react` for icons and accessible controls (labels, disabled state, `aria-live`) in the existing components.
 
